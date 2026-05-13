@@ -1,0 +1,66 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #FAFAF7;
+  --foreground: #1A1A1A;
+  --muted: #8B8680;
+  --border: #E8E4DC;
+  --agent-accent: #C97B5C;
+  --agent-accent-soft: rgba(201, 123, 92, 0.13);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+body {
+  min-height: 100svh;
+  margin: 0;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.52), rgba(250, 250, 247, 0) 32rem),
+    var(--background);
+  color: var(--foreground);
+  overflow-wrap: break-word;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+img,
+video {
+  display: block;
+  max-width: 100%;
+}
+
+::selection {
+  background: var(--agent-accent-soft);
+}
+
+.phone-shell {
+  width: min(100%, 28rem);
+  margin-inline: auto;
+}
+
+.safe-bottom {
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+}
+
+.tap-target {
+  min-height: 48px;
+}
+
+.agent-focus:focus-visible {
+  outline: 3px solid var(--agent-accent-soft);
+  outline-offset: 2px;
+}

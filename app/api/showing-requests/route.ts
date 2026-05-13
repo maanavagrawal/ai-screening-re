@@ -1,0 +1,73 @@
+import { NextResponse } from "next/server";
+import { z } from "zod";
+import { parseJsonBody } from "@/lib/api/validation";
+import { addDevShowingRequest } from "@/lib/dev-store";
+import { logEvents } from "@/lib/events";
+import { findLeadById, updateLead } from "@/lib/leads";
+import { getListingForAgent } from "@/lib/listings";
+import { resolveAgentBySlug } from "@/lib/resolve-agent";
+import { getServiceSupabase } from "@/lib/supabase/service";
+
+const BodySchema = z.object({
+  agent_slug: z.string().min(1),
+  lead_id: z.string().uuid(),
+  listing_id: z.string().uuid(),
+  preferred_date: z.string().nullable().optional(),
+  preferred_time_of_day: z.enum(["morning", "afternoon", "evening"]).nullable().optional(),
+  note: z.string().optional().nullable()
+});
+
+export async function POST(request: Request) {
+  const parsed = await parseJsonBody(request, BodySchema);
+  if ("response" in parsed) return parsed.response;
+
+  const body = parsed.data;
+  const agent = await resolveAgentBySlug(body.agent_slug);
+  if (!agent) return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+
+  const lead = await findLeadById(body.lead_id);
+  if (!lead || lead.agent_id !== agent.id) return NextResponse.json({ error: "Lead not found" }, { status: 404 });
+  const listing = await getListingForAgent(agent.id, body.listing_id);
+  if (!listing) return NextResponse.json({ error: "Listing not found" }, { status: 404 });
+  if (!lead.phone_verified) return NextResponse.json({ error: "Phone must be verified first" }, { status: 400 });
+
+  const supabase = getServiceSupabase();
+  const requestRow = supabase
+    ? await (async () => {
+        const { data, error } = await supabase
+          .from("showing_requests")
+          .insert({
+            lead_id: lead.id,
+            listing_id: body.listing_id,
+            preferred_date: body.preferred_date ?? null,
+            preferred_time_of_day: body.preferred_time_of_day ?? null,
+            note: body.note ?? null
+          })
+          .select("*")
+          .single();
+        if (error) throw new Error(`Failed to create showing request: ${error.message}`);
+        return data;
+      })()
+    : addDevShowingRequest({
+        lead_id: lead.id,
+        listing_id: body.listing_id,
+        preferred_date: body.preferred_date ?? null,
+        preferred_time_of_day: body.preferred_time_of_day ?? null,
+        note: body.note ?? null
+      });
+
+  await updateLead(lead.id, { tier: "requested_showing" });
+  await logEvents({
+    agent,
+    sessionId: lead.session_id,
+    leadId: lead.id,
+    events: [
+      {
+        event_type: "showing_request_submitted",
+        metadata: { listing_id: body.listing_id }
+      }
+    ]
+  });
+
+  return NextResponse.json({ showing_request: requestRow });
+}

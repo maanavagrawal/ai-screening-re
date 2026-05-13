@@ -1,0 +1,23 @@
+# Pilot Agent Onboarding Checklist
+
+- [ ] Slug (URL-safe, lowercase, no spaces)
+- [ ] Full name
+- [ ] Market (city, state)
+- [ ] Bio (1 line, 12-15 words)
+- [ ] Headshot (square, min 400x400, sent via email)
+- [ ] Phone number (for Twilio Verify and lead alerts)
+- [ ] Email
+- [ ] Year-to-date closed volume in USD
+- [ ] Year-to-date buyers placed
+- [ ] Preferred accent color (hex, default terracotta)
+- [ ] List of neighborhoods they cover (8-12)
+- [ ] 9 listings, each with:
+  - [ ] Address
+  - [ ] Price
+  - [ ] Beds / Baths / Sqft
+  - [ ] Neighborhood
+  - [ ] Features from the canonical list
+  - [ ] Deal-breaker flags from the canonical list
+  - [ ] Video URL (Instagram/TikTok URL or mp4)
+  - [ ] Agent's take — 1 line, their own words
+  - [ ] `is_pocket` (true for 1 listing if they have one)

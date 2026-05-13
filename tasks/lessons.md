@@ -1,0 +1,11 @@
+# Lessons
+
+- This repo starts from an empty scaffold. Keep setup files lightweight until the actual application stack is added.
+- Use `./scripts/setup.sh`, `./scripts/dev.sh`, `./scripts/test.sh`, and `./scripts/e2e.sh` as the stable entrypoints for Codex Cloud and local Codex work.
+- Local Codex can use the in-app browser for live watchable UI iteration; Codex Cloud should leave logs, screenshots, commits, and PRs as evidence.
+- Deployment preference: target Vercel for the Next.js buyer app/API routes and Supabase for Postgres/Storage/RLS; reserve Railway for future persistent workers if async lead processing outgrows request-safe jobs.
+- The Codex in-app browser reaches this local dev server through the LAN URL `http://10.0.0.37:3001`; `localhost`/`127.0.0.1` can be blocked in that surface.
+- LAN preview is not always a secure context, so browser APIs such as `crypto.randomUUID()` need practical fallbacks in client code.
+- Keep Playwright e2e deterministic: start a fresh dedicated server port, disable external AI/Twilio calls with env flags, and avoid reusing stale Next dev servers.
+- Intake screens must guard pending advancement. Without a pending ref/state, repeated Continue clicks can create overlapping `/api/intake/next` requests and stuck transitions.
+- Listing cards should always render an image-backed media preview; remote videos can be slow or blank before they emit loaded data.

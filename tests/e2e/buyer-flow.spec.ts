@@ -1,0 +1,162 @@
+import { expect, test, type Page } from "@playwright/test";
+
+async function currentHeading(page: Page) {
+  return (await page.locator("main h1").first().textContent().catch(() => ""))?.trim() ?? "";
+}
+
+async function waitForIntakeStepToChange(page: Page, previousHeading: string) {
+  await expect
+    .poll(
+      async () => {
+        if (page.url().includes("/gate")) return true;
+        return (await currentHeading(page)) !== previousHeading;
+      },
+      { timeout: 15_000 }
+    )
+    .toBe(true);
+}
+
+async function clickButtonAndWait(page: Page, name: string) {
+  const heading = await currentHeading(page);
+  await page.getByRole("button", { name, exact: true }).click({ force: true });
+  await waitForIntakeStepToChange(page, heading);
+}
+
+async function clickContinueAndWait(page: Page) {
+  const heading = await currentHeading(page);
+  const continueButton = page.getByRole("button", { name: /^Continue$/ }).first();
+  await expect(continueButton).toBeEnabled();
+  await continueButton.click({ force: true });
+  await waitForIntakeStepToChange(page, heading);
+}
+
+async function answerIfVisible(page: Page, label: string) {
+  const target = page.getByRole("button", { name: label, exact: true }).first();
+  if (await target.isVisible().catch(() => false)) {
+    if ((await target.getAttribute("aria-pressed").catch(() => null)) !== "true") {
+      await target.click({ force: true });
+    }
+    await clickContinueAndWait(page);
+    return true;
+  }
+  return false;
+}
+
+async function expectNoHorizontalOverflow(page: Page) {
+  await expect
+    .poll(async () =>
+      page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1)
+    )
+    .toBe(true);
+}
+
+async function expectNoVisibleAiBranding(page: Page) {
+  await expect(page.getByText(/OpenAI|ChatGPT|Claude|Anthropic|powered by AI|AI assistant/i)).toHaveCount(0);
+}
+
+async function completeIntake(page: Page) {
+  await page.getByRole("button", { name: "30 days" }).click();
+  await clickContinueAndWait(page);
+  await page.getByLabel("Home search notes").fill("Need 3 bedrooms in East Austin under $750k with a yard, office, and no busy street.");
+  await clickContinueAndWait(page);
+  await clickButtonAndWait(page, "Yes, continue");
+
+  const deadline = Date.now() + 75_000;
+  while (Date.now() < deadline) {
+    if (await page.getByText("See your matches").isVisible().catch(() => false)) break;
+    if (await page.getByText("What is your current situation?").isVisible().catch(() => false)) {
+      await page.getByRole("button", { name: "Renting" }).click({ force: true });
+      await clickContinueAndWait(page);
+      continue;
+    }
+    if (await page.getByText("How are you thinking about financing?").isVisible().catch(() => false)) {
+      const preApproved = page.getByRole("button", { name: "Pre-approved" });
+      if ((await preApproved.getAttribute("aria-pressed").catch(() => null)) !== "true") {
+        await preApproved.click({ force: true });
+      }
+      await clickContinueAndWait(page);
+      continue;
+    }
+    if (await answerIfVisible(page, "Renting")) continue;
+    if (await answerIfVisible(page, "Pre-approved")) continue;
+    if (await page.getByRole("button", { name: "I'll send it later" }).isVisible().catch(() => false)) {
+      await clickButtonAndWait(page, "I'll send it later");
+      continue;
+    }
+    if (await page.getByText("How many bedrooms?").isVisible().catch(() => false)) {
+      await page.getByRole("button", { name: "3" }).click({ force: true });
+      await clickContinueAndWait(page);
+      continue;
+    }
+    if (await page.getByText("How many bathrooms?").isVisible().catch(() => false)) {
+      await page.getByRole("button", { name: "2" }).click({ force: true });
+      await clickContinueAndWait(page);
+      continue;
+    }
+    if (await answerIfVisible(page, "House")) continue;
+    if (await answerIfVisible(page, "No")) continue;
+    const skip = page.getByRole("button", { name: "Skip" }).first();
+    if (await skip.isVisible().catch(() => false)) {
+      const heading = await currentHeading(page);
+      await skip.click({ force: true });
+      await waitForIntakeStepToChange(page, heading);
+      continue;
+    }
+    const continueButton = page.getByRole("button", { name: "Continue" }).first();
+    if (
+      (await continueButton.isVisible().catch(() => false)) &&
+      (await continueButton.isEnabled().catch(() => false))
+    ) {
+      await clickContinueAndWait(page);
+      continue;
+    }
+    await page.waitForTimeout(250);
+  }
+
+  await expect(page.getByText("See your matches")).toBeVisible({ timeout: 10_000 });
+}
+
+test("Maya and David landing pages are isolated", async ({ page }) => {
+  await page.goto("/maya");
+  await expect(page.getByText("Maya Chen")).toBeVisible();
+  await expect(page.getByText("Austin, TX", { exact: true })).toBeVisible();
+  await expect(page.getByText("David Park")).toHaveCount(0);
+  await expectNoVisibleAiBranding(page);
+  await expectNoHorizontalOverflow(page);
+
+  await page.goto("/david");
+  await expect(page.getByText("David Park")).toBeVisible();
+  await expect(page.getByText("Seattle, WA", { exact: true })).toBeVisible();
+  await expect(page.getByText("Maya Chen")).toHaveCount(0);
+  await expectNoVisibleAiBranding(page);
+  await expectNoHorizontalOverflow(page);
+});
+
+test("buyer can complete intake, see matches, and request a showing", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.goto("/maya");
+  await page.getByRole("link", { name: /Find your next home/ }).click();
+  await completeIntake(page);
+
+  await page.getByLabel("First name").fill("Sarah");
+  await page.getByLabel("Phone").fill("(512) 555-0141");
+  await page.getByLabel("Email").fill("sarah@example.com");
+  await page.getByRole("button", { name: /Show me homes/ }).click();
+
+  await expect(page.getByText("Maya is picking your matches...")).toBeVisible();
+  await expect(page).toHaveURL(/\/maya\/matches/, { timeout: 15_000 });
+  await expect(page.getByRole("heading", { name: "Your matches", exact: true })).toBeVisible({ timeout: 15_000 });
+  await expectNoVisibleAiBranding(page);
+  await expectNoHorizontalOverflow(page);
+  await page.getByRole("button", { name: "Request a showing" }).first().click();
+  await expect(page.getByText("Quick check before scheduling")).toBeVisible();
+  await page.getByRole("button", { name: "Send code" }).click();
+  await page.getByLabel("Verification code").fill("123456");
+  await page.getByRole("button", { name: "Verify and continue" }).click();
+  await expect(page.getByText("When works for you?")).toBeVisible({ timeout: 15_000 });
+});
+
+test("/agents is not a directory page", async ({ page }) => {
+  await page.goto("/agents");
+  await expect(page.getByText("This link is not active.")).toBeVisible();
+});
