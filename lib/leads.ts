@@ -2,11 +2,13 @@ import {
   createDevLead,
   getDevLeadById,
   getDevLeadForSession,
+  getDevLeadsForAgent,
   getDevMatchReasons,
   updateDevLead,
   upsertDevMatchReasons
 } from "@/lib/dev-store";
 import { generateBrief, generateMatchReasons } from "@/lib/ai/anthropic";
+import { computeTemperature } from "@/lib/compute-temperature";
 import { getEventsForLead } from "@/lib/events";
 import { getListingsForAgent } from "@/lib/listings";
 import { rankListings } from "@/lib/match-score";
@@ -39,6 +41,20 @@ export async function findLeadForSession(agentId: string, sessionId: string): Pr
   return (data as Lead | null) ?? null;
 }
 
+export async function getLeadsForAgent(agentId: string): Promise<Lead[]> {
+  const supabase = getServiceSupabase();
+  if (!supabase) return getDevLeadsForAgent(agentId);
+
+  const { data, error } = await supabase
+    .from("leads")
+    .select("*")
+    .eq("agent_id", agentId)
+    .order("created_at", { ascending: false });
+
+  if (error) throw new Error(`Failed to load leads: ${error.message}`);
+  return (data ?? []) as Lead[];
+}
+
 export async function createLead(input: {
   agent: Agent;
   sessionId: string;
@@ -65,6 +81,7 @@ export async function createLead(input: {
       tier
     });
     await runLeadSideEffects(input.agent, lead);
+    await recomputeLeadTemperature(lead.id);
     return lead;
   }
 
@@ -96,6 +113,7 @@ export async function createLead(input: {
     .is("lead_id", null);
 
   await runLeadSideEffects(input.agent, lead);
+  await recomputeLeadTemperature(lead.id);
   return lead;
 }
 
@@ -145,6 +163,18 @@ export async function runLeadSideEffects(agent: Agent, lead: Lead) {
     })),
     { onConflict: "lead_id,listing_id" }
   );
+}
+
+export async function recomputeLeadTemperature(leadId: string): Promise<Lead | null> {
+  const lead = await findLeadById(leadId);
+  if (!lead) return null;
+  const events = await getEventsForLead(lead);
+  const result = computeTemperature(lead, events);
+  return updateLead(lead.id, {
+    temperature: result.temperature,
+    temperature_score: result.score,
+    temperature_reasons: result.reasons
+  });
 }
 
 export async function getMatchReasonMap(leadId: string) {

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { parseJsonBody } from "@/lib/api/validation";
 import { EventBatchSchema, logEvents } from "@/lib/events";
+import { recomputeLeadTemperature } from "@/lib/leads";
 import { resolveAgentBySlug } from "@/lib/resolve-agent";
 
 export async function POST(request: Request) {
@@ -17,6 +18,10 @@ export async function POST(request: Request) {
     leadId: body.lead_id,
     events: body.events
   });
+
+  if (body.lead_id) {
+    await recomputeLeadTemperature(body.lead_id);
+  }
 
   return NextResponse.json({ ok: true, count: events?.length ?? body.events.length });
 }

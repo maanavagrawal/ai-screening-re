@@ -13,6 +13,29 @@ export function AgentLanding({
 }) {
   const name = firstName(agent.name);
   const trust = formatClosedVolume(agent.closed_volume_usd);
+  if (agent.paused) {
+    return (
+      <div className="flex min-h-svh flex-col justify-center py-10">
+        <header className="flex items-center gap-3">
+          {agent.headshot_url ? (
+            <Image
+              src={agent.headshot_url}
+              alt={agent.name}
+              width={48}
+              height={48}
+              className="h-12 w-12 rounded-full object-cover ring-1 ring-warm-border"
+            />
+          ) : null}
+          <div>
+            <p className="text-sm font-semibold">{agent.name}</p>
+            <p className="text-sm text-warm-muted">{agent.market}</p>
+          </div>
+        </header>
+        <h1 className="mt-10 font-serif text-5xl leading-none">Currently accepting limited inquiries.</h1>
+        <p className="mt-5 text-warm-muted">Please email {agent.email ?? name} directly for the fastest response.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-svh flex-col pt-8">
@@ -35,10 +58,10 @@ export function AgentLanding({
       <section className="flex flex-1 flex-col justify-center py-12">
         <p className="mb-4 text-sm text-warm-muted">{agent.bio}</p>
         <h1 className="break-words font-serif text-4xl leading-[0.98] tracking-normal text-warm-text sm:text-5xl">
-          Find your home in {agent.market}, with {name}.
+          {agent.headline || `Find your home in ${agent.market}, with ${name}.`}
         </h1>
         <p className="mt-6 text-lg leading-7 text-warm-muted">
-          Curated listings. Personally shown. Off-market access.
+          {agent.sub_headline || "Curated listings. Personally shown. Off-market access."}
         </p>
         {trust || agent.buyers_placed > 0 ? (
           <p className="mt-6 rounded-full border border-warm-border px-4 py-3 text-center text-sm text-warm-muted">

@@ -9,11 +9,100 @@ export function agentVoice(agent: Agent, listings: Listing[] = []) {
 
   return [
     `${agent.name} works in ${agent.market}.`,
+    agent.voice_notes ? `Agent voice notes: ${agent.voice_notes}` : "",
     agent.bio ? `Bio: ${agent.bio}` : "",
     notes ? `Examples of the agent's actual listing voice: ${notes}` : ""
   ]
     .filter(Boolean)
     .join("\n");
+}
+
+export function voiceGenerationPrompt(input: { rawText: string; market: string }) {
+  return {
+    system: `You help a real estate agent turn rough personal notes into landing page copy and reusable voice guidance.
+
+The output should sound specific, local, and human. Avoid corporate phrases like "trusted advisor", "dream home", "white-glove", "seamless", or "AI-powered".
+
+Return only the schema:
+- bio: one line, 12-20 words.
+- headline: buyer-facing landing headline, short enough for a phone screen.
+- sub_headline: 5-10 words, plain and confident.
+- voice_notes: 2-3 sentences describing how this agent talks, for future lead briefs and listing match reasons.
+
+Few-shot:
+Input: "I grew up in Ballard, I care about commute math, and I tell buyers when a house is not worth it."
+Output style: bio = "Ballard-raised Seattle advisor who is blunt about commute, resale, and tradeoffs."
+voice_notes = "Direct, practical, locally specific. Uses plain language, calls out tradeoffs, and avoids hype."
+
+Input: "I work with first-time buyers in East Austin and explain renovation upside without pressure."
+Output style: bio = "East Austin buyer specialist who makes renovation upside feel clear, calm, and doable."
+voice_notes = "Warm, specific, and steady. Names neighborhoods, renovation ranges, and buyer concerns without sounding salesy."`,
+    prompt: `Market:
+${input.market}
+
+Agent notes:
+${input.rawText}`
+  };
+}
+
+export function replyTemplatesPrompt(input: {
+  agent: Agent;
+  agentVoice: string;
+  listings: Listing[];
+  baseUrl: string;
+}) {
+  return {
+    system: `You write short copy/paste reply templates for ${input.agent.name}, a real estate agent.
+
+Agent voice/context:
+${input.agentVoice}
+
+Rules:
+- Return templates for Instagram DM reply, missed call follow-up, open house follow-up, and Zillow lead reply.
+- Each template is 2-3 sentences.
+- Sound like the agent wrote it quickly for a real person.
+- End with a screening link.
+- No corporate boilerplate, no emojis, no claims not supported by the input.`,
+    prompt: `Agent:
+${input.agent.name}
+
+Recent listings:
+${JSON.stringify(input.listings.slice(0, 5), null, 2)}
+
+Base tracked link:
+${input.baseUrl}`
+  };
+}
+
+export function regenerateOpenerPrompt(input: {
+  agent: Agent;
+  agentVoice: string;
+  lead: Lead;
+  events: EventRecord[];
+  toneHint?: "shorter" | "warmer" | "more_direct" | null;
+}) {
+  return {
+    system: `You rewrite one suggested opener for ${input.agent.name} to text a real estate buyer.
+
+Agent voice/context:
+${input.agentVoice}
+
+Rules:
+- Output one text message only, 1-3 short sentences.
+- Reference at least one specific buyer detail.
+- Never mention AI, scoring, tracking, or internal notes.
+- If toneHint is shorter, make it tighter.
+- If toneHint is warmer, add warmth without fluff.
+- If toneHint is more_direct, be concise and action-oriented.`,
+    prompt: `Lead:
+${JSON.stringify(input.lead, null, 2)}
+
+Events:
+${JSON.stringify(input.events, null, 2)}
+
+Tone hint:
+${input.toneHint ?? "default"}`
+  };
 }
 
 export function extractionPrompt(input: {

@@ -44,7 +44,10 @@ export const EVENT_TYPES = [
   "abandoned_showing_request",
   "showing_request_submitted",
   "returned_to_matches",
-  "returning_visitor_landing"
+  "returning_visitor_landing",
+  "lead_marked_contacted",
+  "lead_snoozed",
+  "lead_marked_junk"
 ] as const;
 
 export const QUESTION_ORDER = [

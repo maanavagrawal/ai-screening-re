@@ -4,7 +4,7 @@ import { BuyerViewport } from "@/components/shell/buyer-viewport";
 import { AgentLanding } from "@/components/landing/agent-landing";
 import { ReturningVisitor } from "@/components/landing/returning-visitor";
 import { generateWhatsNew } from "@/lib/ai/anthropic";
-import { getDevEventsForLead } from "@/lib/dev-store";
+import { getEventsForLead } from "@/lib/events";
 import { findLeadById } from "@/lib/leads";
 import { getListingsForAgent } from "@/lib/listings";
 import { resolveAgentBySlug } from "@/lib/resolve-agent";
@@ -26,7 +26,7 @@ export default async function AgentPage({ params }: { params: Promise<{ agentSlu
         agent,
         listings,
         lead,
-        events: getDevEventsForLead(lead)
+        events: await getEventsForLead(lead)
       })
     ).summary;
   }

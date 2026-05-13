@@ -3,7 +3,7 @@ import { z } from "zod";
 import { parseJsonBody } from "@/lib/api/validation";
 import { checkDevVerifyCode } from "@/lib/dev-store";
 import { logEvents } from "@/lib/events";
-import { findLeadById, updateLead } from "@/lib/leads";
+import { findLeadById, recomputeLeadTemperature, updateLead } from "@/lib/leads";
 import { resolveAgentBySlug } from "@/lib/resolve-agent";
 
 const BodySchema = z.object({
@@ -62,6 +62,7 @@ export async function POST(request: Request) {
       }
     ]
   });
+  await recomputeLeadTemperature(lead.id);
 
   return NextResponse.json({ lead: updated });
 }

@@ -1,9 +1,13 @@
 export type Agent = {
   id: string;
+  user_id?: string | null;
   slug: string;
   name: string;
   headshot_url: string | null;
   bio: string | null;
+  headline?: string | null;
+  sub_headline?: string | null;
+  voice_notes?: string | null;
   market: string;
   neighborhoods: string[];
   phone: string | null;
@@ -11,6 +15,8 @@ export type Agent = {
   closed_volume_usd: number;
   buyers_placed: number;
   accent_color: string | null;
+  paused?: boolean;
+  notification_preferences?: NotificationPreferences;
   created_at?: string;
 };
 
@@ -46,6 +52,14 @@ export type Lead = {
   preapproval_url: string | null;
   free_text_raw: string | null;
   tier: "captured" | "engaged" | "requested_showing" | "browsing";
+  temperature?: "hot" | "warm" | "browsing" | null;
+  temperature_score?: number | null;
+  temperature_reasons?: string[] | null;
+  last_contacted_at?: string | null;
+  snoozed_until?: string | null;
+  marked_junk?: boolean;
+  notes?: string | null;
+  source?: string | null;
   brief: unknown | null;
   created_at: string;
 };
@@ -90,6 +104,7 @@ export type Preferences = {
   anything_else?: string;
   tier_hint?: "captured" | "browsing";
   answered_question_ids?: string[];
+  source?: string;
 };
 
 export type FreeTextExtraction = {
@@ -107,21 +122,20 @@ export type FreeTextExtraction = {
   confidence: Record<string, number>;
 };
 
-export type ListingPayload = Omit<
-  Listing,
-  | "id"
-  | "agent_id"
-  | "created_at"
-  | "features"
-  | "deal_breaker_flags"
-  | "video_url"
-  | "video_source"
-  | "is_pocket"
-> & {
+export type ListingPayload = {
+  address: string;
+  price: number;
+  beds: number;
+  baths: number;
+  sqft?: number | null;
+  neighborhood?: string | null;
+  property_type?: string | null;
   features?: string[];
   dealBreakerFlags?: string[];
   videoUrl?: string | null;
-  videoSource?: "instagram" | "tiktok" | "mp4";
+  videoSource?: "instagram" | "tiktok" | "mp4" | null;
+  description?: string | null;
+  agent_note?: string | null;
   isPocket?: boolean;
 };
 
@@ -134,4 +148,46 @@ export type ShowingRequest = {
   note: string | null;
   status: string;
   created_at: string;
+};
+
+export type NotificationPreferences = {
+  new_lead: boolean;
+  showing_requested: boolean;
+  hot_lead: boolean;
+  weekly_summary: boolean;
+};
+
+export type SetupDraft = {
+  id: string;
+  user_id: string;
+  data: Partial<AgentSetupDraftData>;
+  current_step: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AgentSetupDraftData = {
+  userId?: string;
+  slug?: string;
+  name?: string;
+  market?: string;
+  neighborhoods?: string[];
+  headshotUrl?: string;
+  bio?: string;
+  headline?: string;
+  subHeadline?: string;
+  voiceNotes?: string;
+  voiceRaw?: string;
+  phone?: string;
+  phoneVerified?: boolean;
+  email?: string;
+  accentColor?: string;
+  notificationPreferences?: Partial<NotificationPreferences>;
+  listings?: ListingPayload[];
+};
+
+export type DashboardLead = Lead & {
+  last_activity_at: string;
+  events: EventRecord[];
+  showing_requests: ShowingRequest[];
 };

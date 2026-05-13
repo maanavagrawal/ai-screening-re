@@ -97,7 +97,8 @@ export const IntakeAnswersSchema = z.object({
   deal_breakers: z.array(DealBreakerSchema).optional(),
   first_time_buyer: z.boolean().optional(),
   anything_else: z.string().optional(),
-  tier_hint: z.enum(["captured", "browsing"]).optional()
+  tier_hint: z.enum(["captured", "browsing"]).optional(),
+  source: z.string().optional()
 });
 
 export const IntakeNextQuestionDecisionSchema = z.object({
@@ -126,8 +127,30 @@ export const WhatsNewResponseSchema = z.object({
   summary: z.string()
 });
 
+export const VoiceGenerationSchema = z.object({
+  bio: z.string(),
+  headline: z.string(),
+  sub_headline: z.string(),
+  voice_notes: z.string()
+});
+
+export const ReplyTemplateSchema = z.object({
+  scenario: z.enum(["instagram_dm", "missed_call", "open_house", "zillow_lead"]),
+  template_text: z.string()
+});
+
+export const ReplyTemplatesSchema = z.object({
+  templates: z.array(ReplyTemplateSchema).min(4).max(4)
+});
+
+export const RegenerateOpenerSchema = z.object({
+  suggested_opener: z.string()
+});
+
 export type QuestionId = z.infer<typeof QuestionIdSchema>;
 export type IntakeAnswers = z.infer<typeof IntakeAnswersSchema>;
 export type FreeTextExtractionResult = z.infer<typeof FreeTextExtractionSchema>;
 export type IntakeNextQuestionDecision = z.infer<typeof IntakeNextQuestionDecisionSchema>;
 export type AgentBrief = z.infer<typeof AgentBriefSchema>;
+export type VoiceGeneration = z.infer<typeof VoiceGenerationSchema>;
+export type ReplyTemplates = z.infer<typeof ReplyTemplatesSchema>;

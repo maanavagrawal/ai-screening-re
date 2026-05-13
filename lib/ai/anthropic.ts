@@ -3,6 +3,9 @@ import {
   FreeTextExtractionSchema,
   IntakeNextQuestionDecisionSchema,
   PerListingMatchReasonsSchema,
+  RegenerateOpenerSchema,
+  ReplyTemplatesSchema,
+  VoiceGenerationSchema,
   WhatsNewResponseSchema,
   type FreeTextExtractionResult,
   type IntakeAnswers,
@@ -14,6 +17,9 @@ import {
   extractionPrompt,
   matchReasonsPrompt,
   nextQuestionPrompt,
+  regenerateOpenerPrompt,
+  replyTemplatesPrompt,
+  voiceGenerationPrompt,
   whatsNewPrompt
 } from "@/lib/ai/prompts";
 import type { Agent, EventRecord, Lead, Listing, Preferences } from "@/lib/types";
@@ -406,5 +412,99 @@ export async function generateWhatsNew(input: WhatsNewInput) {
     return await generateAnthropicObject<ReturnType<typeof fallbackWhatsNew>>(WhatsNewResponseSchema, prompt);
   } catch {
     return fallbackWhatsNew(input, pocketListings);
+  }
+}
+
+export function fallbackVoiceGeneration(input: { rawText: string; market: string }) {
+  const trimmed = input.rawText.trim();
+  const firstSentence = trimmed.split(/[.!?]/)[0]?.trim();
+  const localDetail = firstSentence || `I help buyers make clear decisions in ${input.market}`;
+  return {
+    bio: `${input.market} advisor who helps buyers understand tradeoffs before they move.`,
+    headline: `Find your next home in ${input.market}, with someone who knows the tradeoffs.`,
+    sub_headline: "Curated homes. Clear tradeoffs. Faster follow-up.",
+    voice_notes: `${localDetail}. The agent's voice should be specific, practical, and calm, with plain-language notes about neighborhoods, timing, and tradeoffs.`
+  };
+}
+
+export async function generateVoice(input: { rawText: string; market: string }) {
+  if (!canUseAnthropic()) return fallbackVoiceGeneration(input);
+  try {
+    return await generateAnthropicObject<ReturnType<typeof fallbackVoiceGeneration>>(
+      VoiceGenerationSchema,
+      voiceGenerationPrompt(input)
+    );
+  } catch {
+    return fallbackVoiceGeneration(input);
+  }
+}
+
+function fallbackReplyTemplates(input: { agent: Agent; baseUrl: string }) {
+  return {
+    templates: [
+      {
+        scenario: "instagram_dm" as const,
+        template_text: `Send me what caught your eye and start here: ${input.baseUrl}?src=instagram_bio. I will send the strongest fits, not a giant list.`
+      },
+      {
+        scenario: "missed_call" as const,
+        template_text: `Sorry I missed you. If you are looking seriously, this gets me the details I need before I call back: ${input.baseUrl}?src=missed_call.`
+      },
+      {
+        scenario: "open_house" as const,
+        template_text: `Good meeting you today. If you want me to tailor the next few homes, start here: ${input.baseUrl}?src=open_house.`
+      },
+      {
+        scenario: "zillow_lead" as const,
+        template_text: `I can help with that one and a few better comps. Start here so I can see what actually matters to you: ${input.baseUrl}?src=zillow_lead.`
+      }
+    ]
+  };
+}
+
+export async function generateReplyTemplates(input: { agent: Agent; listings: Listing[]; baseUrl: string }) {
+  if (!canUseAnthropic()) return fallbackReplyTemplates(input);
+  try {
+    return await generateAnthropicObject<ReturnType<typeof fallbackReplyTemplates>>(
+      ReplyTemplatesSchema,
+      replyTemplatesPrompt({
+        agent: input.agent,
+        agentVoice: agentVoice(input.agent, input.listings),
+        listings: input.listings,
+        baseUrl: input.baseUrl
+      })
+    );
+  } catch {
+    return fallbackReplyTemplates(input);
+  }
+}
+
+export async function regenerateOpener(input: {
+  agent: Agent;
+  lead: Lead;
+  events: EventRecord[];
+  toneHint?: "shorter" | "warmer" | "more_direct" | null;
+}) {
+  const current = input.lead.brief as { suggested_opener?: string } | null;
+  const fallback = {
+    suggested_opener:
+      current?.suggested_opener ??
+      `Hi ${input.lead.first_name ?? "there"}, it is ${input.agent.name}. I saw what you shared and have a couple of homes worth prioritizing.`
+  };
+
+  if (!canUseAnthropic()) return fallback;
+  try {
+    return await generateAnthropicObject<typeof fallback>(
+      RegenerateOpenerSchema,
+      regenerateOpenerPrompt({
+        agent: input.agent,
+        agentVoice: agentVoice(input.agent),
+        lead: input.lead,
+        events: input.events,
+        toneHint: input.toneHint
+      })
+    );
+  } catch {
+    return fallback;
   }
 }

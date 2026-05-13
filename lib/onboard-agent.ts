@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { getServiceSupabase } from "@/lib/supabase/service";
 import type { Json } from "@/lib/supabase/types";
-import type { Agent, ListingPayload } from "@/lib/types";
+import type { Agent, ListingPayload, NotificationPreferences } from "@/lib/types";
 import { upsertDevAgent } from "@/lib/dev-store";
 
 const listingPayloadSchema = z.object({
@@ -22,6 +22,7 @@ const listingPayloadSchema = z.object({
 });
 
 const agentSetupPayloadSchema = z.object({
+  userId: z.string().uuid().optional().nullable(),
   slug: z
     .string()
     .min(2)
@@ -29,8 +30,11 @@ const agentSetupPayloadSchema = z.object({
   name: z.string().min(2),
   market: z.string().min(2),
   neighborhoods: z.array(z.string().min(1)).min(1),
-  headshotUrl: z.string().url(),
+  headshotUrl: z.string().min(8),
   bio: z.string().min(8),
+  headline: z.string().min(4).optional(),
+  subHeadline: z.string().min(4).optional(),
+  voiceNotes: z.string().min(8).optional(),
   phone: z.string().min(5),
   email: z.string().email(),
   closedVolumeUsd: z.number().int().min(0).optional(),
@@ -39,11 +43,24 @@ const agentSetupPayloadSchema = z.object({
     .string()
     .regex(/^#[0-9A-Fa-f]{6}$/)
     .optional(),
+  paused: z.boolean().optional(),
+  notificationPreferences: z
+    .object({
+      new_lead: z.boolean().optional(),
+      showing_requested: z.boolean().optional(),
+      hot_lead: z.boolean().optional(),
+      weekly_summary: z.boolean().optional()
+    })
+    .optional(),
   listings: z.array(listingPayloadSchema).min(1)
 });
 
-export type AgentSetupPayload = z.infer<typeof agentSetupPayloadSchema> & {
+export type AgentSetupPayload = Omit<
+  z.input<typeof agentSetupPayloadSchema>,
+  "listings" | "notificationPreferences"
+> & {
   listings: ListingPayload[];
+  notificationPreferences?: Partial<NotificationPreferences>;
 };
 
 export async function onboardAgent(payload: AgentSetupPayload): Promise<Agent> {

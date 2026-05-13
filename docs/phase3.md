@@ -1,5 +1,7 @@
 # Phase 3 Notes
 
+Phase 3 expands the platform layer after Phase 2 proves that agents can self-onboard and work leads from the inbox dashboard.
+
 ## Subdomain Support
 
 Extend `resolveAgent(request)` to inspect the request host. If the host is `{slug}.yourapp.com`, resolve the slug before falling back to path-based routing.
@@ -8,10 +10,32 @@ Extend `resolveAgent(request)` to inspect the request host. If the host is `{slu
 
 Use the `domains` table for verified custom domains and map them through the Vercel custom domains API. `resolveAgent(request)` should check exact host matches against `domains.domain`.
 
+## Billing
+
+- Add subscription plans after the setup wizard and dashboard prove retention.
+- Gate paid features at the agent/account level, not by buyer page route.
+- Keep buyer pages fast and public even when billing state is checked server-side.
+
 ## Analytics Surface Area
 
 Build analytics from `events`, `leads.tier`, `showing_requests`, and `lead_match_reasons`. Important signals include abandoned verification, dismissed listings, returning visits, and showing requests.
 
+Phase 3 analytics should answer:
+
+- Which channel creates hot leads?
+- Which listings create showing intent?
+- Which buyer questions predict high temperature?
+- Which agent follow-up copy gets copied or regenerated?
+
+Use simple event-derived aggregates first. Avoid heavy chart UI until the underlying signals are reliable.
+
 ## SMS-to-Buyer Expansion
 
 Twilio Verify is Phase 1's only SMS use. Phase 3 can add buyer nurture texts, listing alerts, showing reminders, and agent handoff sequences.
+
+## Platform Operations
+
+- Vercel custom domains API integration.
+- Background jobs if request-time side effects become unreliable.
+- Audit logs for agent account changes.
+- Data export and deletion workflows for compliance.

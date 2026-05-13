@@ -3,7 +3,7 @@ import { z } from "zod";
 import { parseJsonBody } from "@/lib/api/validation";
 import { addDevShowingRequest } from "@/lib/dev-store";
 import { logEvents } from "@/lib/events";
-import { findLeadById, updateLead } from "@/lib/leads";
+import { findLeadById, recomputeLeadTemperature, updateLead } from "@/lib/leads";
 import { getListingForAgent } from "@/lib/listings";
 import { resolveAgentBySlug } from "@/lib/resolve-agent";
 import { getServiceSupabase } from "@/lib/supabase/service";
@@ -68,6 +68,7 @@ export async function POST(request: Request) {
       }
     ]
   });
+  await recomputeLeadTemperature(lead.id);
 
   return NextResponse.json({ showing_request: requestRow });
 }

@@ -1,5 +1,15 @@
 import { PILOT_AGENTS } from "@/lib/pilot-agents";
-import type { Agent, EventRecord, Lead, Listing, Preferences, ShowingRequest } from "@/lib/types";
+import type {
+  Agent,
+  AgentSetupDraftData,
+  EventRecord,
+  Lead,
+  Listing,
+  NotificationPreferences,
+  Preferences,
+  SetupDraft,
+  ShowingRequest
+} from "@/lib/types";
 import type { AgentSetupPayload } from "@/lib/onboard-agent";
 
 type MatchReason = {
@@ -7,6 +17,12 @@ type MatchReason = {
   listing_id: string;
   reason: string;
   generated_at: string;
+};
+
+type DistributionCache = {
+  agent_id: string;
+  data: Record<string, unknown>;
+  updated_at: string;
 };
 
 type DevStore = {
@@ -17,6 +33,9 @@ type DevStore = {
   matchReasons: MatchReason[];
   showingRequests: ShowingRequest[];
   verifyCodes: Map<string, string>;
+  agentVerifyCodes: Map<string, string>;
+  setupDrafts: SetupDraft[];
+  distributionCache: DistributionCache[];
 };
 
 const globalStore = globalThis as typeof globalThis & { __AI_SCREENING_RE_STORE__?: DevStore };
@@ -28,10 +47,14 @@ function now() {
 function toAgent(payload: AgentSetupPayload): Agent {
   return {
     id: crypto.randomUUID(),
+    user_id: payload.userId ?? null,
     slug: payload.slug,
     name: payload.name,
     headshot_url: payload.headshotUrl,
     bio: payload.bio,
+    headline: payload.headline ?? null,
+    sub_headline: payload.subHeadline ?? null,
+    voice_notes: payload.voiceNotes ?? null,
     market: payload.market,
     neighborhoods: payload.neighborhoods,
     phone: payload.phone,
@@ -39,7 +62,20 @@ function toAgent(payload: AgentSetupPayload): Agent {
     closed_volume_usd: payload.closedVolumeUsd ?? 0,
     buyers_placed: payload.buyersPlaced ?? 0,
     accent_color: payload.accentColor ?? "#C97B5C",
+    paused: payload.paused ?? false,
+    notification_preferences: normalizeNotificationPreferences(payload.notificationPreferences),
     created_at: now()
+  };
+}
+
+export function normalizeNotificationPreferences(
+  input?: Partial<NotificationPreferences> | null
+): NotificationPreferences {
+  return {
+    new_lead: input?.new_lead ?? false,
+    showing_requested: input?.showing_requested ?? true,
+    hot_lead: input?.hot_lead ?? true,
+    weekly_summary: input?.weekly_summary ?? false
   };
 }
 
@@ -73,7 +109,10 @@ function createStore(): DevStore {
     events: [],
     matchReasons: [],
     showingRequests: [],
-    verifyCodes: new Map()
+    verifyCodes: new Map(),
+    agentVerifyCodes: new Map(),
+    setupDrafts: [],
+    distributionCache: []
   };
 
   for (const payload of PILOT_AGENTS) {
@@ -115,8 +154,61 @@ export function getDevAgentBySlug(slug: string) {
   return devStore().agents.find((agent) => agent.slug === slug) ?? null;
 }
 
+export function getDevAgentByUserId(userId: string) {
+  return devStore().agents.find((agent) => agent.user_id === userId) ?? null;
+}
+
+export function getFirstDevAgent() {
+  return devStore().agents[0] ?? null;
+}
+
+export function updateDevAgent(agentId: string, patch: Partial<Agent>) {
+  const agent = devStore().agents.find((item) => item.id === agentId);
+  if (!agent) return null;
+  Object.assign(agent, patch);
+  return agent;
+}
+
 export function getDevListings(agentId: string) {
   return devStore().listings.filter((listing) => listing.agent_id === agentId);
+}
+
+export function createDevListing(agentId: string, listing: AgentSetupPayload["listings"][number]) {
+  const row: Listing = {
+    id: crypto.randomUUID(),
+    agent_id: agentId,
+    address: listing.address,
+    price: listing.price,
+    beds: listing.beds,
+    baths: listing.baths,
+    sqft: listing.sqft ?? null,
+    neighborhood: listing.neighborhood ?? null,
+    property_type: listing.property_type ?? null,
+    features: listing.features ?? [],
+    deal_breaker_flags: listing.dealBreakerFlags ?? [],
+    video_url: listing.videoUrl ?? null,
+    video_source: listing.videoSource ?? null,
+    description: listing.description ?? null,
+    agent_note: listing.agent_note ?? null,
+    is_pocket: listing.isPocket ?? false,
+    created_at: now()
+  };
+  devStore().listings.unshift(row);
+  return row;
+}
+
+export function updateDevListing(agentId: string, listingId: string, patch: Partial<Listing>) {
+  const listing = devStore().listings.find((item) => item.agent_id === agentId && item.id === listingId);
+  if (!listing) return null;
+  Object.assign(listing, patch);
+  return listing;
+}
+
+export function deleteDevListing(agentId: string, listingId: string) {
+  const store = devStore();
+  const before = store.listings.length;
+  store.listings = store.listings.filter((listing) => !(listing.agent_id === agentId && listing.id === listingId));
+  return store.listings.length < before;
 }
 
 export function getDevListingForAgent(agentId: string, listingId: string) {
@@ -132,6 +224,10 @@ export function getDevLeadForSession(agentId: string, sessionId: string) {
     (lead) => lead.agent_id === agentId && lead.session_id === sessionId
   );
   return leads.sort((a, b) => b.created_at.localeCompare(a.created_at))[0] ?? null;
+}
+
+export function getDevLeadsForAgent(agentId: string) {
+  return devStore().leads.filter((lead) => lead.agent_id === agentId);
 }
 
 export function createDevLead(input: {
@@ -157,6 +253,14 @@ export function createDevLead(input: {
     preapproval_url: input.preapprovalUrl ?? null,
     free_text_raw: input.freeTextRaw ?? null,
     tier: input.tier,
+    temperature: null,
+    temperature_score: null,
+    temperature_reasons: [],
+    last_contacted_at: null,
+    snoozed_until: null,
+    marked_junk: false,
+    notes: null,
+    source: typeof input.preferences.source === "string" ? input.preferences.source : "direct",
     brief: null,
     created_at: now()
   };
@@ -172,6 +276,61 @@ export function updateDevLead(leadId: string, patch: Partial<Lead>) {
   if (!lead) return null;
   Object.assign(lead, patch);
   return lead;
+}
+
+export function upsertDevSetupDraft(input: {
+  userId: string;
+  data: Partial<AgentSetupDraftData>;
+  currentStep: string;
+}) {
+  const store = devStore();
+  const existing = store.setupDrafts.find((draft) => draft.user_id === input.userId);
+  if (existing) {
+    existing.data = { ...existing.data, ...input.data };
+    existing.current_step = input.currentStep;
+    existing.updated_at = now();
+    return existing;
+  }
+
+  const draft: SetupDraft = {
+    id: crypto.randomUUID(),
+    user_id: input.userId,
+    data: input.data,
+    current_step: input.currentStep,
+    created_at: now(),
+    updated_at: now()
+  };
+  store.setupDrafts.push(draft);
+  return draft;
+}
+
+export function getDevSetupDraft(userId: string) {
+  return devStore().setupDrafts.find((draft) => draft.user_id === userId) ?? null;
+}
+
+export function setDevAgentVerifyCode(userId: string, code: string) {
+  devStore().agentVerifyCodes.set(userId, code);
+}
+
+export function checkDevAgentVerifyCode(userId: string, code: string) {
+  return devStore().agentVerifyCodes.get(userId) === code || code === "123456";
+}
+
+export function getDevDistributionCache(agentId: string) {
+  return devStore().distributionCache.find((cache) => cache.agent_id === agentId) ?? null;
+}
+
+export function setDevDistributionCache(agentId: string, data: Record<string, unknown>) {
+  const store = devStore();
+  const existing = store.distributionCache.find((cache) => cache.agent_id === agentId);
+  if (existing) {
+    existing.data = data;
+    existing.updated_at = now();
+    return existing;
+  }
+  const cache = { agent_id: agentId, data, updated_at: now() };
+  store.distributionCache.push(cache);
+  return cache;
 }
 
 export function addDevEvents(events: Array<Omit<EventRecord, "id" | "created_at">>) {
