@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { getListingsForAgent } from "@/lib/listings";
 import { findLeadById, getMatchReasonMap } from "@/lib/leads";
+import { redactKnownListingAddresses, redactListingForBuyer } from "@/lib/listing-privacy";
 import { rankListings } from "@/lib/match-score";
 import { resolveAgent } from "@/lib/resolve-agent";
 import { LEAD_COOKIE, SESSION_COOKIE } from "@/lib/session";
@@ -32,11 +33,13 @@ export async function GET(
   return NextResponse.json({
     lead,
     matches: ranked.map(({ listing, score }) => ({
-      listing,
+      listing: redactListingForBuyer(listing),
       score,
-      match_reason:
+      match_reason: redactKnownListingAddresses(
         reasonMap.get(listing.id) ??
-        `${listing.neighborhood ?? agent.market} fits your search with ${listing.beds} beds and ${listing.baths} baths.`
+          `${listing.neighborhood ?? agent.market} fits your search with ${listing.beds} beds and ${listing.baths} baths.`,
+        listings
+      )
     }))
   });
 }

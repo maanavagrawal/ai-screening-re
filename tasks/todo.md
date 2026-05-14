@@ -2,6 +2,16 @@
 
 ## Priority 1
 
+- [x] Redact buyer-facing listing addresses
+  - Goal: prevent buyers from seeing or inspecting exact street addresses before they request a showing.
+  - Acceptance:
+    - Buyer landing cards do not render exact listing addresses.
+    - Buyer matches API does not return exact listing addresses in its JSON payload.
+    - Match reasons and returning-visitor copy are generated from buyer-safe listing data and existing reasons are scrubbed before returning.
+    - Agent dashboard/setup still show full addresses.
+    - Unit/e2e coverage proves seeded addresses are not visible in buyer flows.
+    - Typecheck, lint, unit tests, buyer e2e, and production build pass.
+
 - [x] Improve setup link placement tags and listing autofill
   - Goal: make distribution placement controls clearer and reduce manual listing-entry work without relying on stealth scraping.
   - Acceptance:
@@ -150,3 +160,4 @@
 - 2026-05-13: Fixed Railway public-origin handling so magic links and distribution links prefer `NEXT_PUBLIC_APP_URL`, use forwarded headers as fallback, and never emit `0.0.0.0`. Verified typecheck, lint, all unit tests, and production build.
 - 2026-05-13: Hardened `/auth/verify`: GET now renders a no-store confirmation page without consuming the token, POST consumes it and creates the session, and all redirects use the public-origin helper. Verified focused route tests, typecheck, lint, all unit tests, and production build.
 - 2026-05-14: Changed setup link placement controls into copyable tags and added listing autofill from pasted captions, MLS remarks, flyer text, or notes. Deliberately avoided stealth Zillow/Redfin/MLS scraping; the production path is user-provided text now and authorized data feeds later. Verified typecheck, lint, all unit tests, targeted setup e2e, and production build.
+- 2026-05-14: Redacted exact listing addresses from buyer-facing landing cards, matches API payloads, match cards, and buyer AI prompt inputs. Agent dashboard/setup still keep full addresses. Verified typecheck, lint, all unit tests, targeted buyer e2e reruns, and production build. The first full buyer e2e run hit an existing desktop adaptive-intake timeout, then the failed desktop cases passed individually on fresh rerun.

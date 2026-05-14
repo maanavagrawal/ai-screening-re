@@ -1,9 +1,11 @@
 import type { Agent, EventRecord, Listing, Lead, Preferences } from "@/lib/types";
+import { buyerSafeListingSummary, redactKnownListingAddresses } from "@/lib/listing-privacy";
 
 export function agentVoice(agent: Agent, listings: Listing[] = []) {
   const notes = listings
     .map((listing) => listing.agent_note)
-    .filter(Boolean)
+    .filter((note): note is string => Boolean(note))
+    .map((note) => redactKnownListingAddresses(note, listings))
     .slice(0, 3)
     .join(" ");
 
@@ -287,10 +289,10 @@ Lead preferences:
 ${JSON.stringify(input.lead.preferences, null, 2)}
 
 Listings added since lead creation:
-${JSON.stringify(input.newListings, null, 2)}
+${JSON.stringify(input.newListings.map(buyerSafeListingSummary), null, 2)}
 
 Pocket listings still available:
-${JSON.stringify(input.pocketListings, null, 2)}
+${JSON.stringify(input.pocketListings.map(buyerSafeListingSummary), null, 2)}
 
 Visit history:
 ${JSON.stringify(input.visitHistory, null, 2)}
@@ -319,6 +321,7 @@ Rules:
 - Reference at least one specific buyer preference and one specific listing attribute.
 - Sound conversational, like the agent texting a friend.
 - Never invent listing details.
+- Never mention the street number, street name, or exact address; buyers receive exact addresses only after they request a showing.
 - Avoid generic phrases like "great match", "perfect for you", "checks all the boxes", or "dream home".
 - If there is a drawback relevant to the buyer, mention it plainly.
 - Do not mention AI, scoring, ranking, or internal logic.
@@ -345,6 +348,6 @@ Raw free-text context, if present:
 ${input.freeTextRaw ?? ""}
 
 Top listings:
-${JSON.stringify(input.listings, null, 2)}`
+${JSON.stringify(input.listings.map(buyerSafeListingSummary), null, 2)}`
   };
 }

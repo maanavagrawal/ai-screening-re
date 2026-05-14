@@ -19,3 +19,4 @@
 - Do not build public links from `request.url` on Railway. Use `NEXT_PUBLIC_APP_URL` first, forwarded host/proto second, and reject internal bind hosts such as `0.0.0.0`.
 - Magic-link GET routes must not consume tokens. Email clients and security scanners can prefetch GET links; render a no-store confirmation page and consume only on POST.
 - Keep listing import production-safe: reduce agent typing by extracting fields from user-provided captions, MLS remarks, flyer copy, notes, CSVs, or future authorized IDX/RESO feeds; do not build stealth Zillow/Redfin/MLS scraping or anti-bot evasion.
+- Exact listing addresses are agent-only data until a serious showing flow. Buyer-facing pages, APIs, and buyer AI prompts should use redacted listing payloads or neighborhood-level labels so users cannot inspect network/HTML and bypass the agent.

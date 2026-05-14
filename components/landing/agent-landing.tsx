@@ -3,6 +3,7 @@ import Image from "next/image";
 import { LinkButton } from "@/components/ui/button";
 import type { Agent, Listing } from "@/lib/types";
 import { firstName, formatClosedVolume, formatCurrency } from "@/lib/formatting";
+import { BUYER_ADDRESS_PLACEHOLDER, buyerLocationLabel } from "@/lib/listing-privacy";
 
 export function AgentLanding({
   agent,
@@ -78,7 +79,7 @@ export function AgentLanding({
             <a
               href={`/${agent.slug}/intake`}
               key={listing.id}
-              aria-label={`Unlock personalized matches starting with ${listing.address}`}
+              aria-label={`Unlock personalized matches in ${buyerLocationLabel(listing)}`}
               className="relative block overflow-hidden rounded-2xl border border-warm-border bg-white/70 p-4 shadow-sm"
             >
               <div className="blur-[3px]">
@@ -86,7 +87,10 @@ export function AgentLanding({
                 <p className="mt-2 text-sm text-warm-muted">
                   {listing.beds} beds • {listing.baths} baths • {listing.neighborhood}
                 </p>
-                <p className="mt-1 text-sm text-warm-muted">{listing.address}</p>
+                <p className="mt-2 inline-flex items-center gap-2 rounded-full border border-warm-border bg-[#FAFAF7] px-3 py-1.5 text-xs font-semibold text-warm-muted">
+                  <LockKeyhole size={13} />
+                  {listing.address === BUYER_ADDRESS_PLACEHOLDER ? BUYER_ADDRESS_PLACEHOLDER : "Exact address withheld"}
+                </p>
               </div>
               <div className="absolute inset-0 flex items-center justify-center bg-[#FAFAF7]/45">
                 <span className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold shadow-soft">

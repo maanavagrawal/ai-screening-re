@@ -1,10 +1,11 @@
 "use client";
 
-import { EyeOff } from "lucide-react";
+import { EyeOff, LockKeyhole } from "lucide-react";
 import Image from "next/image";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { firstName, formatCurrency } from "@/lib/formatting";
+import { BUYER_ADDRESS_PLACEHOLDER, buyerLocationLabel } from "@/lib/listing-privacy";
 import type { Agent, Listing } from "@/lib/types";
 
 const listingPosters = [
@@ -16,7 +17,8 @@ const listingPosters = [
 ];
 
 function posterForListing(listing: Listing) {
-  const seed = [...listing.address].reduce((total, char) => total + char.charCodeAt(0), 0);
+  const seedText = `${listing.id}-${listing.neighborhood ?? ""}-${listing.price}`;
+  const seed = [...seedText].reduce((total, char) => total + char.charCodeAt(0), 0);
   return listingPosters[seed % listingPosters.length];
 }
 
@@ -42,9 +44,10 @@ export function ListingCard({
   ].filter(Boolean).slice(0, 2);
   const posterUrl = posterForListing(listing);
   const [videoReady, setVideoReady] = useState(false);
+  const locationLabel = buyerLocationLabel(listing);
 
   return (
-    <article aria-label={`${listing.address} match`} className="min-h-[70svh] overflow-hidden rounded-2xl border border-warm-border bg-white shadow-soft">
+    <article aria-label={`${locationLabel} match`} className="min-h-[70svh] overflow-hidden rounded-2xl border border-warm-border bg-white shadow-soft">
       <div className="relative aspect-[4/5] overflow-hidden bg-[#F1EEE8]">
         <Image
           src={posterUrl}
@@ -57,7 +60,7 @@ export function ListingCard({
         <div className="absolute inset-0 bg-black/[0.03]" />
         {listing.video_url && listing.video_source === "mp4" ? (
           <video
-            aria-label={`Video preview of ${listing.address}`}
+            aria-label={`Video preview for ${locationLabel}`}
             src={listing.video_url}
             poster={posterUrl}
             className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-300 ${videoReady ? "opacity-100" : "opacity-0"}`}
@@ -87,7 +90,10 @@ export function ListingCard({
           {listing.beds} beds • {listing.baths} baths{listing.sqft ? ` • ${listing.sqft.toLocaleString()} sqft` : ""} •{" "}
           {listing.neighborhood}
         </p>
-        <p className="mt-1 text-sm text-warm-muted">{listing.address}</p>
+        <p className="mt-2 inline-flex items-center gap-2 rounded-full border border-warm-border bg-[#FAFAF7] px-3 py-2 text-xs font-semibold text-warm-muted">
+          <LockKeyhole size={14} />
+          {listing.address === BUYER_ADDRESS_PLACEHOLDER ? BUYER_ADDRESS_PLACEHOLDER : "Exact address withheld"}
+        </p>
         <p className="mt-5 border-l-2 border-[var(--agent-accent)] pl-3 text-sm italic leading-6">
           {reason}
         </p>
@@ -103,7 +109,7 @@ export function ListingCard({
         ) : null}
         <div className="mt-5 grid grid-cols-[1fr_auto] gap-3">
           <Button onClick={onRequest}>Request a showing</Button>
-          <Button aria-label={`Not for me: ${listing.address}`} variant="secondary" onClick={onDismiss}>
+          <Button aria-label={`Not for me: ${locationLabel}`} variant="secondary" onClick={onDismiss}>
             <EyeOff size={18} />
           </Button>
         </div>

@@ -6,6 +6,7 @@ import { ReturningVisitor } from "@/components/landing/returning-visitor";
 import { generateWhatsNew } from "@/lib/ai/anthropic";
 import { getEventsForLead } from "@/lib/events";
 import { findLeadById } from "@/lib/leads";
+import { redactListingsForBuyer } from "@/lib/listing-privacy";
 import { getListingsForAgent } from "@/lib/listings";
 import { resolveAgentBySlug } from "@/lib/resolve-agent";
 import { LEAD_COOKIE } from "@/lib/session";
@@ -16,6 +17,7 @@ export default async function AgentPage({ params }: { params: Promise<{ agentSlu
   if (!agent) notFound();
 
   const listings = await getListingsForAgent(agent.id);
+  const buyerListings = redactListingsForBuyer(listings);
   const leadId = (await cookies()).get(LEAD_COOKIE)?.value;
   const lead = leadId ? await findLeadById(leadId) : null;
 
@@ -33,7 +35,7 @@ export default async function AgentPage({ params }: { params: Promise<{ agentSlu
 
   return (
     <BuyerViewport>
-      {lead && summary ? <ReturningVisitor agent={agent} lead={lead} summary={summary} /> : <AgentLanding agent={agent} listings={listings} />}
+      {lead && summary ? <ReturningVisitor agent={agent} lead={lead} summary={summary} /> : <AgentLanding agent={agent} listings={buyerListings} />}
     </BuyerViewport>
   );
 }
