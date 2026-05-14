@@ -1,9 +1,10 @@
 import { headers } from "next/headers";
 import { ArrowRight, Check, Link as LinkIcon } from "lucide-react";
 import { LinkButton } from "@/components/ui/button";
+import { getPublicOriginFromHeaders } from "@/lib/public-origin";
 
 export default async function Home() {
-  const origin = (await requestOrigin()) ?? process.env.NEXT_PUBLIC_APP_URL ?? "https://yourapp.com";
+  const origin = getPublicOriginFromHeaders(await headers()) ?? "https://yourapp.com";
   const exampleUrl = `${origin.replace(/\/$/, "")}/your-name`;
 
   return (
@@ -82,12 +83,4 @@ export default async function Home() {
       </section>
     </main>
   );
-}
-
-async function requestOrigin() {
-  const headerStore = await headers();
-  const host = headerStore.get("x-forwarded-host") ?? headerStore.get("host");
-  if (!host) return undefined;
-  const protocol = headerStore.get("x-forwarded-proto") ?? (host.startsWith("localhost") || host.startsWith("127.") || host.startsWith("10.") ? "http" : "https");
-  return `${protocol}://${host}`;
 }

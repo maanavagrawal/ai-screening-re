@@ -5,6 +5,7 @@ import { getCurrentAgent } from "@/lib/auth/session";
 import { agentBaseUrl } from "@/lib/dashboard/client-utils";
 import { getDashboardSummary } from "@/lib/dashboard/data";
 import { getDistributionData } from "@/lib/dashboard/distribution";
+import { getPublicOriginFromHeaders } from "@/lib/public-origin";
 import { qrDataUrl } from "@/lib/qr";
 
 const allowed = new Set(["leads", "listings", "distribution", "settings"]);
@@ -36,9 +37,5 @@ export default async function DashboardPage({ params }: { params: Promise<{ sect
 }
 
 async function requestOrigin() {
-  const headerStore = await headers();
-  const host = headerStore.get("x-forwarded-host") ?? headerStore.get("host");
-  if (!host) return undefined;
-  const protocol = headerStore.get("x-forwarded-proto") ?? (host.startsWith("localhost") || host.startsWith("127.") || host.startsWith("10.") ? "http" : "https");
-  return `${protocol}://${host}`;
+  return getPublicOriginFromHeaders(await headers()) ?? undefined;
 }

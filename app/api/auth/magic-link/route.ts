@@ -5,6 +5,7 @@ import { parseJsonBody } from "@/lib/api/validation";
 import { getMagicLinkMode } from "@/lib/auth/magic-link-mode";
 import { createAgentMagicLink, devUserIdFromEmail, setAgentSession } from "@/lib/auth/session";
 import { hasPostgresEnv } from "@/lib/db/postgres";
+import { getPublicOriginFromRequest } from "@/lib/public-origin";
 import { saveSetupDraft } from "@/lib/setup/drafts";
 import { hasSupabaseEnv } from "@/lib/supabase/service";
 
@@ -17,7 +18,7 @@ export async function POST(request: Request) {
   if ("response" in parsed) return parsed.response;
 
   const email = parsed.data.email.toLowerCase();
-  const origin = new URL(request.url).origin;
+  const origin = getPublicOriginFromRequest(request);
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   const mode = getMagicLinkMode({
@@ -31,6 +32,13 @@ export async function POST(request: Request) {
 
   if (mode === "postgres_missing_email") {
     return NextResponse.json({ error: "RESEND_API_KEY is required for Railway magic links" }, { status: 500 });
+  }
+
+  if (!origin) {
+    return NextResponse.json(
+      { error: "NEXT_PUBLIC_APP_URL is required to send reachable magic links" },
+      { status: 500 }
+    );
   }
 
   if (mode === "misconfigured") {

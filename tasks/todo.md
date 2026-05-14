@@ -2,6 +2,15 @@
 
 ## Priority 1
 
+- [x] Fix Railway magic-link public URL
+  - Goal: magic-link emails must use the public Railway app URL, not Railway's internal `0.0.0.0:8080` bind address.
+  - Acceptance:
+    - Magic links prefer `NEXT_PUBLIC_APP_URL`.
+    - Forwarded host/proto are used as a fallback.
+    - `0.0.0.0` is never emitted as a public origin.
+    - Dashboard distribution links use the same public-origin helper.
+    - Typecheck, lint, unit tests, and production build pass.
+
 - [x] Remove blank setup welcome video box
   - Goal: remove the remote placeholder video frame that appears as an empty box during setup.
   - Acceptance:
@@ -119,3 +128,4 @@
 - 2026-05-13: Fixed production root routing so `/` starts agent setup instead of redirecting to `/maya`; `/{agentSlug}` remains the buyer-facing share URL. Verified typecheck, lint, targeted desktop/mobile Playwright routing coverage, and production build.
 - 2026-05-13: Fixed Railway setup regressions: headshot upload no longer depends on the server `File` constructor, and production signup now requires a real email/auth path instead of silently falling back to dev setup. Verified typecheck, lint, all unit tests, production build, and built bundle grep for `File`.
 - 2026-05-13: Removed the blank remote-video frame from `/setup/welcome`; setup now goes from the value prop directly to checklist and CTA. Verified typecheck, lint, targeted setup e2e on desktop/mobile, and production build.
+- 2026-05-13: Fixed Railway public-origin handling so magic links and distribution links prefer `NEXT_PUBLIC_APP_URL`, use forwarded headers as fallback, and never emit `0.0.0.0`. Verified typecheck, lint, all unit tests, and production build.

@@ -3,6 +3,7 @@ import { getCurrentAgent } from "@/lib/auth/session";
 import { agentBaseUrl } from "@/lib/dashboard/client-utils";
 import { getDistributionData } from "@/lib/dashboard/distribution";
 import { getLeadsForAgent } from "@/lib/leads";
+import { getPublicOriginFromRequest } from "@/lib/public-origin";
 import { qrDataUrl } from "@/lib/qr";
 
 export async function GET(request: Request) {
@@ -10,8 +11,9 @@ export async function GET(request: Request) {
   if (!agent) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
 
   const leads = await getLeadsForAgent(agent.id);
-  const url = agentBaseUrl(agent, new URL(request.url).origin);
-  const data = await getDistributionData(agent, leads, new URL(request.url).origin);
+  const origin = getPublicOriginFromRequest(request) ?? undefined;
+  const url = agentBaseUrl(agent, origin);
+  const data = await getDistributionData(agent, leads, origin);
   return NextResponse.json({
     url,
     qr: await qrDataUrl(url, 1024),
