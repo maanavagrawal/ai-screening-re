@@ -183,14 +183,6 @@ function Welcome({ onNext }: { onNext: () => void }) {
         </h1>
         <p className="mt-5 text-warm-muted">Each step creates something visible: your page, your voice, your listings, then your first lead preview.</p>
       </div>
-      <video
-        className="aspect-video w-full rounded-2xl border border-warm-border object-cover"
-        autoPlay
-        muted
-        loop
-        playsInline
-        src="https://videos.pexels.com/video-files/7578545/7578545-uhd_1440_2732_25fps.mp4"
-      />
       <div className="grid gap-3 text-sm">
         {["Tell us about your market", "Add your first 3 listings", "Connect your phone for instant lead alerts", "Get your shareable link"].map((item) => (
           <p key={item} className="flex items-center gap-3">

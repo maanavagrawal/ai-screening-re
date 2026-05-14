@@ -2,6 +2,13 @@
 
 ## Priority 1
 
+- [x] Remove blank setup welcome video box
+  - Goal: remove the remote placeholder video frame that appears as an empty box during setup.
+  - Acceptance:
+    - `/setup/welcome` no longer renders the large video placeholder.
+    - Welcome screen still has a clear CTA and setup checklist.
+    - Typecheck, lint, and targeted e2e continue to pass.
+
 - [x] Fix production signup and headshot upload
   - Goal: Railway setup should send real magic links and accept headshot uploads without crashing.
   - Acceptance:
@@ -111,3 +118,4 @@
 - 2026-05-13: Switched deployment preference to Railway-first after Supabase setup friction. Added Railway web-service config, Railway Postgres migration script, health check, direct Postgres persistence paths, and Resend-backed magic-link auth for production.
 - 2026-05-13: Fixed production root routing so `/` starts agent setup instead of redirecting to `/maya`; `/{agentSlug}` remains the buyer-facing share URL. Verified typecheck, lint, targeted desktop/mobile Playwright routing coverage, and production build.
 - 2026-05-13: Fixed Railway setup regressions: headshot upload no longer depends on the server `File` constructor, and production signup now requires a real email/auth path instead of silently falling back to dev setup. Verified typecheck, lint, all unit tests, production build, and built bundle grep for `File`.
+- 2026-05-13: Removed the blank remote-video frame from `/setup/welcome`; setup now goes from the value prop directly to checklist and CTA. Verified typecheck, lint, targeted setup e2e on desktop/mobile, and production build.
