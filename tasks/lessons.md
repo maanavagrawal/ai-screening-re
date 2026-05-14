@@ -4,6 +4,7 @@
 - Use `./scripts/setup.sh`, `./scripts/dev.sh`, `./scripts/test.sh`, and `./scripts/e2e.sh` as the stable entrypoints for Codex Cloud and local Codex work.
 - Local Codex can use the in-app browser for live watchable UI iteration; Codex Cloud should leave logs, screenshots, commits, and PRs as evidence.
 - Deployment preference changed after setup friction: target Railway for the Next.js frontend/API and Railway Postgres for persistence. Keep Supabase as optional legacy compatibility only.
+- Railway/Nixpacks will honor `packageManager` in `package.json`; do not declare pnpm unless `pnpm-lock.yaml` is committed. This repo uses `package-lock.json`, so force `npm ci` via `nixpacks.toml`.
 - The Codex in-app browser reaches this local dev server through the LAN URL `http://10.0.0.37:3001`; `localhost`/`127.0.0.1` can be blocked in that surface.
 - LAN preview is not always a secure context, so browser APIs such as `crypto.randomUUID()` need practical fallbacks in client code.
 - Keep Playwright e2e deterministic: start a fresh dedicated server port, disable external AI/Twilio calls with env flags, and avoid reusing stale Next dev servers.
