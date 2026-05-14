@@ -2,6 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { parseJsonBody } from "@/lib/api/validation";
+import { getMagicLinkMode } from "@/lib/auth/magic-link-mode";
 import { createAgentMagicLink, devUserIdFromEmail, setAgentSession } from "@/lib/auth/session";
 import { hasPostgresEnv } from "@/lib/db/postgres";
 import { saveSetupDraft } from "@/lib/setup/drafts";
@@ -17,16 +18,34 @@ export async function POST(request: Request) {
 
   const email = parsed.data.email.toLowerCase();
   const origin = new URL(request.url).origin;
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const mode = getMagicLinkMode({
+    hasPostgres: hasPostgresEnv(),
+    hasSupabase: hasSupabaseEnv(),
+    hasSupabaseAnonKey: Boolean(supabaseAnonKey),
+    hasResend: Boolean(process.env.RESEND_API_KEY),
+    isProduction: process.env.NODE_ENV === "production",
+    allowDevAgentAuth: process.env.ALLOW_DEV_AGENT_AUTH === "1"
+  });
 
-  if (hasPostgresEnv()) {
+  if (mode === "postgres_missing_email") {
+    return NextResponse.json({ error: "RESEND_API_KEY is required for Railway magic links" }, { status: 500 });
+  }
+
+  if (mode === "misconfigured") {
+    return NextResponse.json(
+      { error: "Agent signup is not configured. Add DATABASE_URL and RESEND_API_KEY in Railway." },
+      { status: 500 }
+    );
+  }
+
+  if (mode === "postgres_email" || mode === "postgres_dev_link") {
     const { userId, token } = await createAgentMagicLink({ email });
     await saveSetupDraft({ userId, currentStep: "welcome", data: { userId, email } });
     const verifyUrl = `${origin}/auth/verify?token=${encodeURIComponent(token)}`;
 
-    if (!process.env.RESEND_API_KEY) {
-      if (process.env.NODE_ENV === "production") {
-        return NextResponse.json({ error: "RESEND_API_KEY is required for Railway magic links" }, { status: 500 });
-      }
+    if (mode === "postgres_dev_link") {
       console.info("[auth:magic-link]", verifyUrl);
       return NextResponse.json({ ok: true, devLink: verifyUrl });
     }
@@ -53,22 +72,21 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true });
   }
 
-  if (hasSupabaseEnv() && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-    );
+  if (mode === "supabase_email") {
+    if (!supabaseUrl || !supabaseAnonKey) {
+      return NextResponse.json({ error: "Supabase Auth is not configured" }, { status: 500 });
+    }
+    const supabase = createClient(supabaseUrl, supabaseAnonKey);
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: { emailRedirectTo: `${origin}/setup/welcome` }
     });
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+    return NextResponse.json({ ok: true });
   }
 
-  if (!hasSupabaseEnv() || process.env.NODE_ENV !== "production" || process.env.ALLOW_DEV_AGENT_AUTH === "1") {
-    const userId = devUserIdFromEmail(email);
-    await setAgentSession({ userId, email });
-    await saveSetupDraft({ userId, currentStep: "welcome", data: { userId, email } });
-  }
+  const userId = devUserIdFromEmail(email);
+  await setAgentSession({ userId, email });
+  await saveSetupDraft({ userId, currentStep: "welcome", data: { userId, email } });
   return NextResponse.json({ ok: true, redirectTo: "/setup/welcome" });
 }

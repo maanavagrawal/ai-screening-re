@@ -2,6 +2,15 @@
 
 ## Priority 1
 
+- [x] Fix production signup and headshot upload
+  - Goal: Railway setup should send real magic links and accept headshot uploads without crashing.
+  - Acceptance:
+    - Headshot upload does not reference the runtime `File` constructor server-side.
+    - Production signup cannot silently fall back to dev auth when email/database auth is misconfigured.
+    - Local development can still use the explicit dev setup redirect.
+    - Regression tests cover both environment routing and upload file detection.
+    - Typecheck, lint, unit tests, and production build pass.
+
 - [x] Production root should start agent setup, not Maya
   - Goal: make the Railway root domain agent-facing while preserving `/{agentSlug}` as the buyer-facing link agents share.
   - Acceptance:
@@ -101,3 +110,4 @@
 - 2026-05-13: Completed Phase 2 implementation: setup wizard, auth/session draft flow, voice/listing setup APIs, dashboard leads/listings/distribution/settings, temperature computation, notifications, docs, host-aware share links, and RLS migration updates. Verified `npm run typecheck`, `npm run lint`, `npm run test`, `npm run e2e`, `npm run build`, plus live in-app browser QA on `/dashboard/leads` and `/dashboard/distribution`. No commit or push was made.
 - 2026-05-13: Switched deployment preference to Railway-first after Supabase setup friction. Added Railway web-service config, Railway Postgres migration script, health check, direct Postgres persistence paths, and Resend-backed magic-link auth for production.
 - 2026-05-13: Fixed production root routing so `/` starts agent setup instead of redirecting to `/maya`; `/{agentSlug}` remains the buyer-facing share URL. Verified typecheck, lint, targeted desktop/mobile Playwright routing coverage, and production build.
+- 2026-05-13: Fixed Railway setup regressions: headshot upload no longer depends on the server `File` constructor, and production signup now requires a real email/auth path instead of silently falling back to dev setup. Verified typecheck, lint, all unit tests, production build, and built bundle grep for `File`.

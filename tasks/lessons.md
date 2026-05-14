@@ -13,3 +13,5 @@
 - Intake screens must guard pending advancement. Without a pending ref/state, repeated Continue clicks can create overlapping `/api/intake/next` requests and stuck transitions.
 - Listing cards should always render an image-backed media preview; remote videos can be slow or blank before they emit loaded data.
 - The production root `/` is agent-facing setup, not a pilot buyer page. Pilot agents belong only at their own slugs such as `/maya` and `/david`; completed setup creates the shareable `/{agentSlug}` link.
+- Railway server routes should avoid browser-only runtime constructors such as `File`; validate multipart uploads structurally and keep `sharp` routes pinned to `runtime = "nodejs"`.
+- Production signup must fail closed if `DATABASE_URL`/`RESEND_API_KEY` or another real auth provider is missing. The dev setup redirect belongs only in local dev or with explicit `ALLOW_DEV_AGENT_AUTH=1`.

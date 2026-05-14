@@ -108,11 +108,14 @@ This app is now Railway-first: one Railway web service runs the Next.js frontend
    TWILIO_VERIFY_SERVICE_SID=
    ```
 
+   `RESEND_API_KEY` is required for production agent signup. Without it, the app refuses to create a setup session instead of silently using the local development bypass.
+
 6. Leave these unset in production:
 
    ```env
    DISABLE_AI=
    DISABLE_TWILIO=
+   ALLOW_DEV_AGENT_AUTH=
    NEXT_PUBLIC_SUPABASE_URL=
    NEXT_PUBLIC_SUPABASE_ANON_KEY=
    SUPABASE_SERVICE_ROLE_KEY=
