@@ -2,8 +2,9 @@ import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import { getCurrentAgent } from "@/lib/auth/session";
+import { agentBaseUrl } from "@/lib/dashboard/client-utils";
 import { getDashboardSummary } from "@/lib/dashboard/data";
-import { agentBaseUrl, getDistributionData } from "@/lib/dashboard/distribution";
+import { getDistributionData } from "@/lib/dashboard/distribution";
 import { qrDataUrl } from "@/lib/qr";
 
 const allowed = new Set(["leads", "listings", "distribution", "settings"]);

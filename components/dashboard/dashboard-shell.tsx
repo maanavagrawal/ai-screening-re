@@ -16,8 +16,9 @@ import {
   Settings,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { humanEvent, type LeadFilter, type LeadSort } from "@/lib/dashboard/data";
-import { agentBaseUrl, type DistributionData } from "@/lib/dashboard/distribution";
+import { agentBaseUrl, humanEvent } from "@/lib/dashboard/client-utils";
+import type { LeadFilter, LeadSort } from "@/lib/dashboard/data";
+import type { DistributionData } from "@/lib/dashboard/distribution";
 import { cn, formatCurrency } from "@/lib/formatting";
 import type { Agent, DashboardLead, Listing, NotificationPreferences } from "@/lib/types";
 

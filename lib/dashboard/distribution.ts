@@ -1,5 +1,7 @@
 import { generateReplyTemplates } from "@/lib/ai/anthropic";
 import { getDevDistributionCache, setDevDistributionCache } from "@/lib/dev-store";
+import { hasPostgresEnv, query } from "@/lib/db/postgres";
+import { agentBaseUrl } from "@/lib/dashboard/client-utils";
 import { getListingsForAgent } from "@/lib/listings";
 import { getServiceSupabase } from "@/lib/supabase/service";
 import type { Agent, Lead } from "@/lib/types";
@@ -16,12 +18,6 @@ export type DistributionData = {
   updatedAt: string;
 };
 
-export function agentBaseUrl(agent: Agent, origin?: string) {
-  const browserOrigin = typeof window !== "undefined" ? window.location.origin : undefined;
-  const base = process.env.NEXT_PUBLIC_APP_URL || origin || browserOrigin || "http://localhost:3000";
-  return `${base.replace(/\/$/, "")}/${agent.slug}`;
-}
-
 function defaultBioTemplates(agent: Agent, url: string) {
   const name = agent.name.split(" ")[0] ?? agent.name;
   return [
@@ -33,6 +29,17 @@ function defaultBioTemplates(agent: Agent, url: string) {
 
 export async function getDistributionData(agent: Agent, leads: Lead[], origin?: string): Promise<DistributionData> {
   const url = agentBaseUrl(agent, origin);
+  if (hasPostgresEnv()) {
+    const { rows } = (await query<{ data: DistributionData }>(
+      "select data from agent_distribution_templates where agent_id = $1 limit 1",
+      [agent.id]
+    )) ?? { rows: [] };
+    if (rows[0]?.data && JSON.stringify(rows[0].data).includes(url)) {
+      return { ...rows[0].data, attribution: sourceBreakdown(leads) };
+    }
+    return regenerateDistributionData(agent, leads, origin);
+  }
+
   const supabase = getServiceSupabase();
   if (!supabase) {
     const cached = getDevDistributionCache(agent.id);
@@ -67,6 +74,18 @@ export async function regenerateDistributionData(agent: Agent, leads: Lead[], or
   };
 
   const supabase = getServiceSupabase();
+  if (hasPostgresEnv()) {
+    await query(
+      `insert into agent_distribution_templates (agent_id, data, updated_at)
+       values ($1, $2, now())
+       on conflict (agent_id) do update
+       set data = excluded.data,
+           updated_at = now()`,
+      [agent.id, JSON.stringify(data)]
+    );
+    return data;
+  }
+
   if (!supabase) {
     setDevDistributionCache(agent.id, data as unknown as Record<string, unknown>);
     return data;

@@ -1,8 +1,14 @@
 import { getDevSetupDraft, upsertDevSetupDraft } from "@/lib/dev-store";
+import { hasPostgresEnv, query } from "@/lib/db/postgres";
 import { getServiceSupabase } from "@/lib/supabase/service";
 import type { AgentSetupDraftData, SetupDraft } from "@/lib/types";
 
 export async function getSetupDraft(userId: string): Promise<SetupDraft | null> {
+  if (hasPostgresEnv()) {
+    const { rows } = (await query<SetupDraft>("select * from setup_drafts where user_id = $1 limit 1", [userId])) ?? { rows: [] };
+    return rows[0] ?? null;
+  }
+
   const supabase = getServiceSupabase();
   if (!supabase) return getDevSetupDraft(userId);
 
@@ -21,6 +27,22 @@ export async function saveSetupDraft(input: {
   data: Partial<AgentSetupDraftData>;
   currentStep: string;
 }): Promise<SetupDraft> {
+  if (hasPostgresEnv()) {
+    const existing = await getSetupDraft(input.userId);
+    const nextData = { ...(existing?.data ?? {}), ...input.data };
+    const { rows } = (await query<SetupDraft>(
+      `insert into setup_drafts (user_id, data, current_step, updated_at)
+       values ($1, $2, $3, now())
+       on conflict (user_id) do update
+       set data = excluded.data,
+           current_step = excluded.current_step,
+           updated_at = now()
+       returning *`,
+      [input.userId, JSON.stringify(nextData), input.currentStep]
+    )) ?? { rows: [] };
+    return rows[0];
+  }
+
   const supabase = getServiceSupabase();
   if (!supabase) return upsertDevSetupDraft(input);
 
@@ -44,4 +66,3 @@ export async function saveSetupDraft(input: {
   if (error) throw new Error(`Failed to save setup draft: ${error.message}`);
   return data as SetupDraft;
 }
-

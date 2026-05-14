@@ -1,15 +1,17 @@
 import { cookies } from "next/headers";
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import {
   getDevAgentByUserId,
   getFirstDevAgent
 } from "@/lib/dev-store";
+import { hasPostgresEnv, query } from "@/lib/db/postgres";
 import { getServiceSupabase, hasSupabaseEnv } from "@/lib/supabase/service";
 import type { Agent } from "@/lib/types";
 
 export const AGENT_USER_COOKIE = "agent_user_id";
 export const AGENT_EMAIL_COOKIE = "agent_email";
 export const AGENT_SLUG_COOKIE = "agent_slug";
+export const AGENT_SESSION_COOKIE = "agent_session";
 
 export function devUserIdFromEmail(email: string) {
   const hash = createHash("sha1").update(email.toLowerCase()).digest("hex");
@@ -18,6 +20,21 @@ export function devUserIdFromEmail(email: string) {
 
 export async function setAgentSession(input: { userId: string; email?: string | null; agentSlug?: string | null }) {
   const store = await cookies();
+  if (hasPostgresEnv()) {
+    const token = randomBytes(32).toString("base64url");
+    await query(
+      `insert into agent_sessions (user_id, email, token_hash, expires_at)
+       values ($1, $2, $3, now() + interval '180 days')`,
+      [input.userId, input.email ?? null, hashToken(token)]
+    );
+    store.set(AGENT_SESSION_COOKIE, token, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 180
+    });
+  }
   store.set(AGENT_USER_COOKIE, input.userId, {
     httpOnly: true,
     sameSite: "lax",
@@ -46,6 +63,20 @@ export async function setAgentSession(input: { userId: string; email?: string | 
 }
 
 export async function getCurrentUserId() {
+  if (hasPostgresEnv()) {
+    const sessionToken = (await cookies()).get(AGENT_SESSION_COOKIE)?.value;
+    if (!sessionToken) return null;
+    const { rows } = (await query<{ user_id: string }>(
+      `select user_id
+       from agent_sessions
+       where token_hash = $1 and expires_at > now()
+       order by created_at desc
+       limit 1`,
+      [hashToken(sessionToken)]
+    )) ?? { rows: [] };
+    return rows[0]?.user_id ?? null;
+  }
+
   if (
     hasSupabaseEnv() &&
     process.env.NODE_ENV === "production" &&
@@ -58,6 +89,11 @@ export async function getCurrentUserId() {
 
 export async function getCurrentAgent(): Promise<Agent | null> {
   const userId = await getCurrentUserId();
+  if (hasPostgresEnv() && userId) {
+    const { rows } = (await query<Agent>("select * from agents where user_id = $1 limit 1", [userId])) ?? { rows: [] };
+    return rows[0] ?? null;
+  }
+
   const supabase = getServiceSupabase();
 
   if (supabase && userId) {
@@ -69,4 +105,31 @@ export async function getCurrentAgent(): Promise<Agent | null> {
   if (userId) return getDevAgentByUserId(userId);
   if (!hasSupabaseEnv()) return getFirstDevAgent();
   return null;
+}
+
+export function hashToken(token: string) {
+  return createHash("sha256").update(token).digest("hex");
+}
+
+export async function createAgentMagicLink(input: { email: string }) {
+  const userId = devUserIdFromEmail(input.email);
+  const token = randomBytes(32).toString("base64url");
+  await query(
+    `insert into agent_magic_links (user_id, email, token_hash, expires_at)
+     values ($1, $2, $3, now() + interval '15 minutes')`,
+    [userId, input.email.toLowerCase(), hashToken(token)]
+  );
+  return { userId, token };
+}
+
+export async function consumeAgentMagicLink(token: string) {
+  const hashed = hashToken(token);
+  const { rows } = (await query<{ id: string; user_id: string; email: string }>(
+    `update agent_magic_links
+     set used_at = now()
+     where token_hash = $1 and used_at is null and expires_at > now()
+     returning id, user_id, email`,
+    [hashed]
+  )) ?? { rows: [] };
+  return rows[0] ?? null;
 }

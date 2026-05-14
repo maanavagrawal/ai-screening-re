@@ -1,4 +1,5 @@
 import { getDevAgentBySlug } from "@/lib/dev-store";
+import { hasPostgresEnv, query } from "@/lib/db/postgres";
 import { getServiceSupabase } from "@/lib/supabase/service";
 import type { Agent } from "@/lib/types";
 
@@ -28,6 +29,11 @@ export async function resolveAgent(request: Request): Promise<Agent | null> {
 export async function resolveAgentBySlug(slug: string | null | undefined): Promise<Agent | null> {
   const normalizedSlug = normalizeSlug(slug);
   if (!normalizedSlug) return null;
+
+  if (hasPostgresEnv()) {
+    const { rows } = (await query<Agent>("select * from agents where slug = $1 limit 1", [normalizedSlug])) ?? { rows: [] };
+    return rows[0] ?? null;
+  }
 
   const supabase = getServiceSupabase();
   if (!supabase) return getDevAgentBySlug(normalizedSlug);

@@ -8,7 +8,7 @@ Extend `resolveAgent(request)` to inspect the request host. If the host is `{slu
 
 ## Custom Domains
 
-Use the `domains` table for verified custom domains and map them through the Vercel custom domains API. `resolveAgent(request)` should check exact host matches against `domains.domain`.
+Use the `domains` table for verified custom domains and map them through Railway's custom-domain flow. `resolveAgent(request)` should check exact host matches against `domains.domain`.
 
 ## Billing
 
@@ -35,7 +35,7 @@ Twilio Verify is Phase 1's only SMS use. Phase 3 can add buyer nurture texts, li
 
 ## Platform Operations
 
-- Vercel custom domains API integration.
+- Railway custom-domain setup and domain verification workflow.
 - Background jobs if request-time side effects become unreliable.
 - Audit logs for agent account changes.
 - Data export and deletion workflows for compliance.

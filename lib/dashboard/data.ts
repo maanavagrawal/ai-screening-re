@@ -1,8 +1,9 @@
 import { getEventsForLead, logEvents } from "@/lib/events";
 import { getListingsForAgent } from "@/lib/listings";
 import { getLeadsForAgent, updateLead } from "@/lib/leads";
+import { hasPostgresEnv, query as pgQuery } from "@/lib/db/postgres";
 import { getServiceSupabase } from "@/lib/supabase/service";
-import type { Agent, DashboardLead, EventRecord, Lead, Listing, ShowingRequest } from "@/lib/types";
+import type { Agent, DashboardLead, Lead, ShowingRequest } from "@/lib/types";
 
 export type LeadFilter = "all" | "hot" | "warm" | "browsing" | "showings";
 export type LeadSort = "priority" | "newest" | "last_activity";
@@ -98,6 +99,14 @@ export async function getDashboardSummary(agent: Agent) {
 }
 
 export async function getShowingRequestsForLead(leadId: string): Promise<ShowingRequest[]> {
+  if (hasPostgresEnv()) {
+    const { rows } = (await pgQuery<ShowingRequest>(
+      "select * from showing_requests where lead_id = $1 order by created_at desc",
+      [leadId]
+    )) ?? { rows: [] };
+    return rows;
+  }
+
   const supabase = getServiceSupabase();
   if (!supabase) {
     const { devStore } = await import("@/lib/dev-store");
@@ -114,33 +123,6 @@ export async function getShowingRequestsForLead(leadId: string): Promise<Showing
   return (data ?? []) as ShowingRequest[];
 }
 
-export function humanEvent(event: EventRecord, listings: Listing[] = []) {
-  const listingId = typeof event.metadata.listing_id === "string" ? event.metadata.listing_id : null;
-  const listing = listingId ? listings.find((item) => item.id === listingId) : null;
-  const labels: Record<string, string> = {
-    intake_started: "Started intake",
-    intake_question_answered: "Answered intake question",
-    intake_free_text_submitted: "Shared what they want",
-    intake_completed: "Completed intake",
-    contact_gate_viewed: "Reached contact gate",
-    lead_created: "Lead created",
-    listing_viewed: "Viewed listing",
-    listing_video_replayed: "Replayed listing video",
-    listing_dismissed: "Dismissed listing",
-    showing_sheet_opened: "Opened showing request",
-    showing_verification_started: "Started phone verification",
-    showing_verification_completed: "Verified phone",
-    showing_verification_abandoned: "Abandoned verification",
-    abandoned_showing_request: "Abandoned showing request",
-    showing_request_submitted: "Requested showing",
-    returned_to_matches: "Returned to matches",
-    lead_marked_contacted: "Marked contacted",
-    lead_snoozed: "Snoozed lead",
-    lead_marked_junk: "Marked junk"
-  };
-  return listing ? `${labels[event.event_type] ?? event.event_type} • ${listing.address}` : labels[event.event_type] ?? event.event_type;
-}
-
 export async function markLeadContacted(agent: Agent, lead: Lead) {
   const updated = await updateLead(lead.id, { last_contacted_at: new Date().toISOString() });
   await logEvents({
@@ -151,4 +133,3 @@ export async function markLeadContacted(agent: Agent, lead: Lead) {
   });
   return updated;
 }
-
