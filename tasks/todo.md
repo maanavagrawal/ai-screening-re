@@ -5,7 +5,7 @@
 - [x] Phase 2 agent-facing setup wizard and inbox dashboard
   - Goal: build the agent self-serve setup wizard and inbox-style dashboard without adding CRM/pipeline/billing/custom-domain scope.
   - Acceptance:
-    - Magic-link signup and setup draft resume flow work locally with dev fallback and Supabase Auth-ready server paths.
+    - Magic-link signup and setup draft resume flow work locally with dev fallback and Railway Postgres/Resend production paths.
     - Wizard screens collect basics, voice, 3 listings, neighborhoods, verified phone, link, and first-lead simulation.
     - Setup completion calls `onboardAgent()`; seed and wizard-created agents share one primitive.
     - `agents.voice_notes` feeds Phase 1 agent brief, match-reason, and what's-new prompts.
@@ -32,6 +32,7 @@
   - Acceptance:
     - Next.js 15 App Router app runs with `pnpm dev`.
     - Supabase migrations define all Phase 1 tables, indexes, storage, and RLS policies.
+    - Railway migration script defines the production Postgres schema for the Railway-first deployment path.
     - `resolveAgent(request)`, `onboardAgent(payload)`, and `matchScore()` exist with tests.
     - Seed script calls `onboardAgent()` for `maya` and `david`.
     - `/maya` and `/david` are isolated buyer-facing islands with no cross-agent UI.
@@ -89,3 +90,4 @@
 - 2026-05-13: Browser QA covered `/maya`, `/david`, intake-to-gate, matches, deferred verification, desktop/mobile e2e, and visual screenshots for landing/matches. Fixed stale e2e server reuse, intake double-submit races, Twilio/AI deterministic test fallbacks, LAN session ID fallback, and blank listing media placeholders.
 - 2026-05-13: Started Phase 2 planning gate per user request. User then approved moving into implementation after the plan; do not commit or push until tests pass and browser QA is clean.
 - 2026-05-13: Completed Phase 2 implementation: setup wizard, auth/session draft flow, voice/listing setup APIs, dashboard leads/listings/distribution/settings, temperature computation, notifications, docs, host-aware share links, and RLS migration updates. Verified `npm run typecheck`, `npm run lint`, `npm run test`, `npm run e2e`, `npm run build`, plus live in-app browser QA on `/dashboard/leads` and `/dashboard/distribution`. No commit or push was made.
+- 2026-05-13: Switched deployment preference to Railway-first after Supabase setup friction. Added Railway web-service config, Railway Postgres migration script, health check, direct Postgres persistence paths, and Resend-backed magic-link auth for production.

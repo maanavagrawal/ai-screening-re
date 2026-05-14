@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { parseJsonBody } from "@/lib/api/validation";
 import { addDevShowingRequest } from "@/lib/dev-store";
+import { hasPostgresEnv, query } from "@/lib/db/postgres";
 import { logEvents } from "@/lib/events";
 import { findLeadById, recomputeLeadTemperature, updateLead } from "@/lib/leads";
 import { getListingForAgent } from "@/lib/listings";
@@ -32,8 +33,18 @@ export async function POST(request: Request) {
   if (!lead.phone_verified) return NextResponse.json({ error: "Phone must be verified first" }, { status: 400 });
 
   const supabase = getServiceSupabase();
-  const requestRow = supabase
+  const requestRow = hasPostgresEnv()
     ? await (async () => {
+        const { rows } = (await query(
+          `insert into showing_requests (lead_id, listing_id, preferred_date, preferred_time_of_day, note)
+           values ($1, $2, $3, $4, $5)
+           returning *`,
+          [lead.id, body.listing_id, body.preferred_date ?? null, body.preferred_time_of_day ?? null, body.note ?? null]
+        )) ?? { rows: [] };
+        return rows[0];
+      })()
+    : supabase
+      ? await (async () => {
         const { data, error } = await supabase
           .from("showing_requests")
           .insert({

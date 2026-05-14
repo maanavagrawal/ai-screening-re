@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { EVENT_TYPES } from "@/lib/constants";
 import { addDevEvents, getDevEventsForLead } from "@/lib/dev-store";
+import { hasPostgresEnv, query } from "@/lib/db/postgres";
 import { getServiceSupabase } from "@/lib/supabase/service";
 import type { Agent, EventRecord, Lead } from "@/lib/types";
 
@@ -30,6 +31,20 @@ export async function logEvents(input: {
     metadata: event.metadata ?? {}
   }));
 
+  if (hasPostgresEnv()) {
+    const values: EventRecord[] = [];
+    for (const row of rows) {
+      const result = await query<EventRecord>(
+        `insert into events (session_id, lead_id, agent_id, event_type, metadata)
+         values ($1, $2, $3, $4, $5)
+         returning *`,
+        [row.session_id, row.lead_id, row.agent_id, row.event_type, JSON.stringify(row.metadata)]
+      );
+      if (result?.rows[0]) values.push(result.rows[0]);
+    }
+    return values;
+  }
+
   const supabase = getServiceSupabase();
   if (!supabase) return addDevEvents(rows);
 
@@ -39,6 +54,17 @@ export async function logEvents(input: {
 }
 
 export async function getEventsForLead(lead: Lead): Promise<EventRecord[]> {
+  if (hasPostgresEnv()) {
+    const { rows } = (await query<EventRecord>(
+      `select distinct on (id) *
+       from events
+       where agent_id = $1 and (lead_id = $2 or session_id = $3)
+       order by id, created_at asc`,
+      [lead.agent_id, lead.id, lead.session_id]
+    )) ?? { rows: [] };
+    return rows.sort((a, b) => a.created_at.localeCompare(b.created_at));
+  }
+
   const supabase = getServiceSupabase();
   if (!supabase) return getDevEventsForLead(lead);
 

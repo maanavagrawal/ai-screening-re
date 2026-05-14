@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentAgent } from "@/lib/auth/session";
-import { agentBaseUrl, getDistributionData } from "@/lib/dashboard/distribution";
+import { agentBaseUrl } from "@/lib/dashboard/client-utils";
+import { getDistributionData } from "@/lib/dashboard/distribution";
 import { getLeadsForAgent } from "@/lib/leads";
 import { qrDataUrl } from "@/lib/qr";
 

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { transaction } from "@/lib/db/postgres";
 import { getServiceSupabase } from "@/lib/supabase/service";
 import type { Json } from "@/lib/supabase/types";
 import type { Agent, ListingPayload, NotificationPreferences } from "@/lib/types";
@@ -65,6 +66,79 @@ export type AgentSetupPayload = Omit<
 
 export async function onboardAgent(payload: AgentSetupPayload): Promise<Agent> {
   const parsed = agentSetupPayloadSchema.parse(payload) as AgentSetupPayload;
+  const postgresAgent = await transaction<Agent>(async (client) => {
+    await client.query("delete from agents where slug = $1", [parsed.slug]);
+    const { rows } = await client.query<Agent>(
+      `insert into agents (
+        user_id, slug, name, market, neighborhoods, headshot_url, bio, headline,
+        sub_headline, voice_notes, phone, email, closed_volume_usd, buyers_placed,
+        accent_color, paused, notification_preferences
+      )
+      values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+      returning *`,
+      [
+        parsed.userId ?? null,
+        parsed.slug,
+        parsed.name,
+        parsed.market,
+        parsed.neighborhoods,
+        parsed.headshotUrl,
+        parsed.bio,
+        parsed.headline ?? `Find your home in ${parsed.market}, with ${parsed.name.split(" ")[0] ?? parsed.name}.`,
+        parsed.subHeadline ?? "Curated listings. Personally shown. Off-market access.",
+        parsed.voiceNotes ?? null,
+        parsed.phone,
+        parsed.email,
+        parsed.closedVolumeUsd ?? 0,
+        parsed.buyersPlaced ?? 0,
+        parsed.accentColor ?? "#C97B5C",
+        parsed.paused ?? false,
+        JSON.stringify({
+          new_lead: false,
+          showing_requested: true,
+          hot_lead: true,
+          weekly_summary: false,
+          ...(parsed.notificationPreferences ?? {})
+        })
+      ]
+    );
+    const agent = rows[0];
+    await client.query(
+      `insert into domains (agent_id, domain, type, verified)
+       values ($1, $2, 'path', true)`,
+      [agent.id, `/${agent.slug}`]
+    );
+    for (const listing of parsed.listings) {
+      await client.query(
+        `insert into listings (
+          agent_id, address, price, beds, baths, sqft, neighborhood, property_type,
+          features, deal_breaker_flags, video_url, video_source, description,
+          agent_note, is_pocket
+        )
+        values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+        [
+          agent.id,
+          listing.address,
+          listing.price,
+          listing.beds,
+          listing.baths,
+          listing.sqft ?? null,
+          listing.neighborhood ?? null,
+          listing.property_type ?? null,
+          listing.features ?? [],
+          listing.dealBreakerFlags ?? [],
+          listing.videoUrl ?? null,
+          listing.videoSource ?? null,
+          listing.description ?? null,
+          listing.agent_note ?? null,
+          listing.isPocket ?? false
+        ]
+      );
+    }
+    return agent;
+  });
+  if (postgresAgent) return postgresAgent;
+
   const supabase = getServiceSupabase();
 
   if (!supabase) {

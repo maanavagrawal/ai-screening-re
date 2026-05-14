@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 export function SignupForm() {
   const [email, setEmail] = useState("");
   const [sent, setSent] = useState(false);
+  const [continueHref, setContinueHref] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -26,7 +27,8 @@ export function SignupForm() {
       return;
     }
     setSent(true);
-    if (json.redirectTo) window.history.replaceState(null, "", "/signup");
+    setContinueHref(json.devLink ?? json.redirectTo ?? null);
+    if (json.redirectTo || json.devLink) window.history.replaceState(null, "", "/signup");
   }
 
   if (sent) {
@@ -38,13 +40,15 @@ export function SignupForm() {
         <div>
           <h1 className="font-serif text-5xl leading-none">Check your email</h1>
           <p className="mt-4 text-warm-muted">
-            Your setup link is on the way. In local preview, you can continue now.
+            Your setup link is on the way. Use the button only when running a local preview link.
           </p>
         </div>
-        <Button className="w-full gap-2" onClick={() => (window.location.href = "/setup/welcome")}>
-          Continue setup
-          <ArrowRight size={18} />
-        </Button>
+        {continueHref ? (
+          <Button className="w-full gap-2" onClick={() => (window.location.href = continueHref)}>
+            Continue setup
+            <ArrowRight size={18} />
+          </Button>
+        ) : null}
       </div>
     );
   }
@@ -77,4 +81,3 @@ export function SignupForm() {
     </form>
   );
 }
-

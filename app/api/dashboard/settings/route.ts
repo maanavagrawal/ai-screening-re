@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { parseJsonBody } from "@/lib/api/validation";
 import { getCurrentAgent, setAgentSession } from "@/lib/auth/session";
+import { hasPostgresEnv, query } from "@/lib/db/postgres";
 import { updateDevAgent } from "@/lib/dev-store";
 import { normalizePhone } from "@/lib/phone";
 import { getServiceSupabase } from "@/lib/supabase/service";
@@ -78,6 +79,31 @@ export async function PATCH(request: Request) {
   };
 
   const supabase = getServiceSupabase();
+  if (hasPostgresEnv()) {
+    if (patch.slug && patch.slug !== agent.slug) {
+      await query(
+        `insert into domains (agent_id, domain, type, verified)
+         values ($1, $2, 'path', true)
+         on conflict (domain) do nothing`,
+        [agent.id, `/${agent.slug}`]
+      );
+    }
+    const keys = Object.keys(patch) as Array<keyof Agent>;
+    if (!keys.length) return NextResponse.json({ agent });
+    const assignments = keys.map((key, index) => `${String(key)} = $${index + 2}`).join(", ");
+    const values = keys.map((key) => {
+      const value = patch[key];
+      return key === "notification_preferences" ? JSON.stringify(value) : value;
+    });
+    const { rows } = (await query<Agent>(
+      `update agents set ${assignments} where id = $1 returning *`,
+      [agent.id, ...values]
+    )) ?? { rows: [] };
+    const updated = rows[0];
+    if (updated?.slug && updated.user_id) await setAgentSession({ userId: updated.user_id, agentSlug: updated.slug });
+    return NextResponse.json({ agent: updated });
+  }
+
   if (!supabase) {
     const updated = updateDevAgent(agent.id, patch);
     if (updated?.slug && updated.user_id) await setAgentSession({ userId: updated.user_id, agentSlug: updated.slug });
