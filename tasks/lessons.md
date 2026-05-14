@@ -18,3 +18,4 @@
 - Do not use remote placeholder video blocks in setup screens. If media is not essential and locally reliable, remove it rather than risking a blank framed rectangle in production.
 - Do not build public links from `request.url` on Railway. Use `NEXT_PUBLIC_APP_URL` first, forwarded host/proto second, and reject internal bind hosts such as `0.0.0.0`.
 - Magic-link GET routes must not consume tokens. Email clients and security scanners can prefetch GET links; render a no-store confirmation page and consume only on POST.
+- Keep listing import production-safe: reduce agent typing by extracting fields from user-provided captions, MLS remarks, flyer copy, notes, CSVs, or future authorized IDX/RESO feeds; do not build stealth Zillow/Redfin/MLS scraping or anti-bot evasion.

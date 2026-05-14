@@ -2,6 +2,15 @@
 
 ## Priority 1
 
+- [x] Improve setup link placement tags and listing autofill
+  - Goal: make distribution placement controls clearer and reduce manual listing-entry work without relying on stealth scraping.
+  - Acceptance:
+    - Link step uses tag-like copy controls for Instagram bio, TikTok bio, and Linktree button.
+    - Listing setup can extract structured details from pasted captions, MLS remarks, flyer text, or notes.
+    - URL import copy is clear that MLS/Zillow/Redfin are references, not scraped sources.
+    - Unit coverage exists for listing detail extraction fallback.
+    - Typecheck, lint, unit tests, setup e2e, and production build pass.
+
 - [x] Harden production magic-link verification
   - Goal: `/auth/verify` must use public URLs and avoid consuming links on email-client GET prefetches.
   - Acceptance:
@@ -140,3 +149,4 @@
 - 2026-05-13: Removed the blank remote-video frame from `/setup/welcome`; setup now goes from the value prop directly to checklist and CTA. Verified typecheck, lint, targeted setup e2e on desktop/mobile, and production build.
 - 2026-05-13: Fixed Railway public-origin handling so magic links and distribution links prefer `NEXT_PUBLIC_APP_URL`, use forwarded headers as fallback, and never emit `0.0.0.0`. Verified typecheck, lint, all unit tests, and production build.
 - 2026-05-13: Hardened `/auth/verify`: GET now renders a no-store confirmation page without consuming the token, POST consumes it and creates the session, and all redirects use the public-origin helper. Verified focused route tests, typecheck, lint, all unit tests, and production build.
+- 2026-05-14: Changed setup link placement controls into copyable tags and added listing autofill from pasted captions, MLS remarks, flyer text, or notes. Deliberately avoided stealth Zillow/Redfin/MLS scraping; the production path is user-provided text now and authorized data feeds later. Verified typecheck, lint, all unit tests, targeted setup e2e, and production build.

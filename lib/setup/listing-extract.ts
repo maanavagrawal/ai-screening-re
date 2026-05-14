@@ -36,7 +36,7 @@ export async function extractListingFromUrl(url: string): Promise<ExtractedListi
       videoUrl: url,
       videoSource: host.includes("instagram.com") ? "instagram" : "tiktok",
       thumbnailUrl: null,
-      message: "Media link added. Social posts cannot provide reliable property details, so fill those in below.",
+      message: "Media link added. Paste the caption or listing remarks below and we can fill the fields from that.",
       requiresManualDetails: true
     };
   }
@@ -53,7 +53,7 @@ export async function extractListingFromUrl(url: string): Promise<ExtractedListi
       videoUrl: null,
       videoSource: null,
       thumbnailUrl: null,
-      message: "We can't auto-import from MLS yet. Paste the details below; it takes about 20 seconds.",
+      message: "We can't scrape MLS portals. Paste the public remarks or flyer text below and we'll fill the fields.",
       requiresManualDetails: true
     };
   }
@@ -68,4 +68,3 @@ export async function extractListingFromUrl(url: string): Promise<ExtractedListi
     requiresManualDetails: true
   };
 }
-

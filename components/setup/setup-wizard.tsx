@@ -13,6 +13,7 @@ import {
   Mic,
   Phone,
   Plus,
+  Tag,
   Wand2
 } from "lucide-react";
 import { Button, LinkButton } from "@/components/ui/button";
@@ -26,7 +27,12 @@ type Step = (typeof steps)[number];
 
 const cityOptions = ["Austin, TX", "Seattle, WA", "Denver, CO", "Los Angeles, CA", "Miami, FL", "Chicago, IL"];
 
-type WizardListing = Partial<ListingPayload> & { sourceUrl?: string; extractMessage?: string };
+type WizardListing = Partial<ListingPayload> & {
+  sourceUrl?: string;
+  sourceText?: string;
+  extractMessage?: string;
+  extractDetailsMessage?: string;
+};
 
 export function SetupWizard({
   step,
@@ -134,6 +140,7 @@ export function SetupWizard({
           {step === "listings" ? (
             <Listings
               listings={listings}
+              neighborhoods={draft.neighborhoods ?? []}
               saveListings={saveListings}
               busy={busy}
               setBusy={setBusy}
@@ -328,12 +335,14 @@ function Voice(props: {
 
 function Listings({
   listings,
+  neighborhoods,
   saveListings,
   busy,
   setBusy,
   onNext
 }: {
   listings: WizardListing[];
+  neighborhoods: string[];
   saveListings: (listings: WizardListing[]) => Promise<void>;
   busy: string | null;
   setBusy: (value: string | null) => void;
@@ -364,6 +373,40 @@ function Listings({
     }
   }
 
+  async function extractDetails(index: number, text: string) {
+    setBusy(`listing-details-${index}`);
+    const response = await fetch("/api/setup/extract-listing-details", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, neighborhoods })
+    });
+    const json = await response.json();
+    setBusy(null);
+    if (response.ok) {
+      const details = json.details as Partial<ListingPayload> & {
+        dealBreakerFlags?: string[];
+        confidence?: number;
+      };
+      const nextPatch: WizardListing = {
+        extractDetailsMessage: details.confidence && details.confidence >= 0.75 ? "Filled the key fields. Give it a quick scan." : "Filled what I could find. Add anything missing below."
+      };
+      if (details.address) nextPatch.address = details.address;
+      if (details.price) nextPatch.price = details.price;
+      if (details.beds != null) nextPatch.beds = details.beds;
+      if (details.baths != null) nextPatch.baths = details.baths;
+      if (details.sqft) nextPatch.sqft = details.sqft;
+      if (details.neighborhood) nextPatch.neighborhood = details.neighborhood;
+      if (details.property_type) nextPatch.property_type = details.property_type;
+      if (details.features?.length) nextPatch.features = details.features;
+      if (details.dealBreakerFlags?.length) nextPatch.dealBreakerFlags = details.dealBreakerFlags;
+      if (details.description) nextPatch.description = details.description;
+      if (details.agent_note) nextPatch.agent_note = details.agent_note;
+      await patch(index, nextPatch);
+    } else {
+      await patch(index, { extractDetailsMessage: json.error ?? "Could not read those details." });
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -372,7 +415,16 @@ function Listings({
       </div>
       <div className="space-y-4">
         {listings.slice(0, 3).map((listing, index) => (
-          <ListingEditor key={index} index={index} listing={listing} patch={patch} extract={extract} busy={busy === `listing-${index}`} />
+          <ListingEditor
+            key={index}
+            index={index}
+            listing={listing}
+            patch={patch}
+            extract={extract}
+            extractDetails={extractDetails}
+            busy={busy === `listing-${index}`}
+            detailsBusy={busy === `listing-details-${index}`}
+          />
         ))}
       </div>
       <Button className="w-full gap-2" disabled={!complete} onClick={onNext}>Continue <ArrowRight size={18} /></Button>
@@ -548,9 +600,21 @@ function LinkStep(props: {
       </div>
       {props.qr ? <img className="mx-auto h-40 w-40 rounded-2xl border border-warm-border" src={props.qr} alt="QR code" /> : null}
       <div className="grid gap-2 sm:grid-cols-3">
-        {["Instagram", "TikTok", "Linktree"].map((label) => (
-          <button key={label} className="rounded-2xl border border-warm-border bg-white px-4 py-3 text-sm font-semibold" onClick={() => navigator.clipboard.writeText(props.fullUrl)}>
-            Add to {label}
+        {[
+          ["Instagram bio", `${props.fullUrl}?src=instagram_bio`],
+          ["TikTok bio", `${props.fullUrl}?src=tiktok_bio`],
+          ["Linktree button", `${props.fullUrl}?src=linktree`]
+        ].map(([label, url]) => (
+          <button
+            key={label}
+            className="flex min-h-14 items-center justify-between gap-3 rounded-full border border-warm-border bg-white px-4 py-2 text-left text-sm font-semibold shadow-soft"
+            onClick={() => navigator.clipboard.writeText(url)}
+          >
+            <span className="inline-flex items-center gap-2">
+              <Tag size={15} className="text-[var(--agent-accent)]" />
+              {label}
+            </span>
+            <span className="rounded-full bg-[var(--agent-accent-soft)] px-3 py-1 text-xs text-[var(--agent-accent)]">copy</span>
           </button>
         ))}
       </div>
@@ -596,9 +660,12 @@ function ListingEditor(props: {
   listing: WizardListing;
   patch: (index: number, patch: WizardListing) => Promise<void>;
   extract: (index: number, url: string) => Promise<void>;
+  extractDetails: (index: number, text: string) => Promise<void>;
   busy: boolean;
+  detailsBusy: boolean;
 }) {
   const [url, setUrl] = useState(props.listing.sourceUrl ?? "");
+  const [sourceText, setSourceText] = useState(props.listing.sourceText ?? "");
   return (
     <div className="rounded-2xl border border-warm-border bg-white p-4">
       <p className="mb-3 text-sm font-semibold">Listing {props.index + 1}</p>
@@ -607,6 +674,27 @@ function ListingEditor(props: {
         <Button variant="secondary" disabled={!url || props.busy} onClick={() => props.extract(props.index, url)}>Use</Button>
       </div>
       {props.listing.extractMessage ? <p className="mt-2 text-sm text-warm-muted">{props.listing.extractMessage}</p> : null}
+      <div className="mt-4 rounded-2xl border border-warm-border bg-[#FAFAF7] p-3">
+        <p className="text-xs font-semibold uppercase tracking-wide text-warm-muted">Autofill from text</p>
+        <textarea
+          className="mt-2 min-h-28 w-full rounded-xl border-warm-border bg-white p-3 text-sm leading-6"
+          value={sourceText}
+          onChange={(event) => {
+            setSourceText(event.target.value);
+            props.patch(props.index, { sourceText: event.target.value });
+          }}
+          placeholder="Paste MLS public remarks, an Instagram caption, flyer copy, or a quick notes block. Example: 123 Maple St, $725k, 3 bed, 2 bath, 1,850 sqft, East Austin, fenced yard..."
+        />
+        <Button
+          className="mt-3 w-full"
+          variant="secondary"
+          disabled={sourceText.trim().length < 20 || props.detailsBusy}
+          onClick={() => props.extractDetails(props.index, sourceText)}
+        >
+          {props.detailsBusy ? "Reading..." : "Fill fields from text"}
+        </Button>
+        {props.listing.extractDetailsMessage ? <p className="mt-2 text-sm text-warm-muted">{props.listing.extractDetailsMessage}</p> : null}
+      </div>
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
         <SmallInput label="Address" value={props.listing.address ?? ""} onChange={(address) => props.patch(props.index, { address })} className="sm:col-span-2" />
         <SmallInput label="Price" value={props.listing.price ? String(props.listing.price) : ""} onChange={(price) => props.patch(props.index, { price: Number(price.replace(/\D/g, "")) || undefined })} />
