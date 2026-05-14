@@ -17,3 +17,4 @@
 - Production signup must fail closed if `DATABASE_URL`/`RESEND_API_KEY` or another real auth provider is missing. The dev setup redirect belongs only in local dev or with explicit `ALLOW_DEV_AGENT_AUTH=1`.
 - Do not use remote placeholder video blocks in setup screens. If media is not essential and locally reliable, remove it rather than risking a blank framed rectangle in production.
 - Do not build public links from `request.url` on Railway. Use `NEXT_PUBLIC_APP_URL` first, forwarded host/proto second, and reject internal bind hosts such as `0.0.0.0`.
+- Magic-link GET routes must not consume tokens. Email clients and security scanners can prefetch GET links; render a no-store confirmation page and consume only on POST.

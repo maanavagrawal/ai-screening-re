@@ -2,6 +2,16 @@
 
 ## Priority 1
 
+- [x] Harden production magic-link verification
+  - Goal: `/auth/verify` must use public URLs and avoid consuming links on email-client GET prefetches.
+  - Acceptance:
+    - Verify redirects use `NEXT_PUBLIC_APP_URL`/forwarded public origin, never `0.0.0.0`.
+    - GET `/auth/verify?token=...` does not consume the token.
+    - POST `/auth/verify` consumes the token and creates the agent session.
+    - Expired/missing tokens redirect to public `/signup?expired=1`.
+    - Regression tests cover GET safety and POST consumption.
+    - Typecheck, lint, unit tests, and production build pass.
+
 - [x] Fix Railway magic-link public URL
   - Goal: magic-link emails must use the public Railway app URL, not Railway's internal `0.0.0.0:8080` bind address.
   - Acceptance:
@@ -129,3 +139,4 @@
 - 2026-05-13: Fixed Railway setup regressions: headshot upload no longer depends on the server `File` constructor, and production signup now requires a real email/auth path instead of silently falling back to dev setup. Verified typecheck, lint, all unit tests, production build, and built bundle grep for `File`.
 - 2026-05-13: Removed the blank remote-video frame from `/setup/welcome`; setup now goes from the value prop directly to checklist and CTA. Verified typecheck, lint, targeted setup e2e on desktop/mobile, and production build.
 - 2026-05-13: Fixed Railway public-origin handling so magic links and distribution links prefer `NEXT_PUBLIC_APP_URL`, use forwarded headers as fallback, and never emit `0.0.0.0`. Verified typecheck, lint, all unit tests, and production build.
+- 2026-05-13: Hardened `/auth/verify`: GET now renders a no-store confirmation page without consuming the token, POST consumes it and creates the session, and all redirects use the public-origin helper. Verified focused route tests, typecheck, lint, all unit tests, and production build.

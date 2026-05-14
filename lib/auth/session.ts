@@ -122,6 +122,30 @@ export async function createAgentMagicLink(input: { email: string }) {
   return { userId, token };
 }
 
+export type AgentMagicLinkLookup = {
+  id: string;
+  user_id: string;
+  email: string;
+  used_at: string | null;
+  expires_at: string;
+};
+
+export async function getAgentMagicLink(token: string) {
+  const hashed = hashToken(token);
+  const { rows } = (await query<AgentMagicLinkLookup>(
+    `select id, user_id, email, used_at, expires_at
+     from agent_magic_links
+     where token_hash = $1
+     limit 1`,
+    [hashed]
+  )) ?? { rows: [] };
+  return rows[0] ?? null;
+}
+
+export function isAgentMagicLinkUsable(link: AgentMagicLinkLookup | null) {
+  return Boolean(link && !link.used_at && new Date(link.expires_at).getTime() > Date.now());
+}
+
 export async function consumeAgentMagicLink(token: string) {
   const hashed = hashToken(token);
   const { rows } = (await query<{ id: string; user_id: string; email: string }>(
