@@ -15,8 +15,8 @@ const fraunces = Fraunces({
 });
 
 export const metadata: Metadata = {
-  title: "Buyer Matches",
-  description: "Personalized real estate matches from your agent."
+  title: "Buyer Link",
+  description: "Create a personal real estate buyer link and qualify inbound leads."
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

@@ -2,6 +2,16 @@ import { expect, test } from "@playwright/test";
 
 const videoUrl = "https://videos.pexels.com/video-files/7578545/7578545-uhd_1440_2732_25fps.mp4";
 
+test("root domain starts agent setup instead of a pilot agent page", async ({ page }) => {
+  await page.goto("/");
+  await expect(page).not.toHaveURL(/\/maya$/);
+  await expect(page.getByRole("heading", { name: "Set up your personal buyer link." })).toBeVisible();
+  await expect(page.getByText("/your-name", { exact: true })).toBeVisible();
+  await page.getByRole("link", { name: "Start setup" }).click();
+  await expect(page).toHaveURL(/\/signup$/);
+  await expect(page.getByRole("heading", { name: "Launch your buyer link" })).toBeVisible();
+});
+
 test("agent can publish setup, receive a lead, and work it from the dashboard", async ({ page }, testInfo) => {
   test.setTimeout(90_000);
   const suffix = `${testInfo.project.name}-${Date.now()}`.toLowerCase().replace(/[^a-z0-9-]/g, "-");

@@ -12,3 +12,4 @@
 - The Codex in-app browser is best for visible navigation, clicks, screenshots, and console checks. If text entry fails because the browser surface lacks clipboard APIs, use Playwright e2e for form-typing proof and keep browser QA focused on live visual/click verification.
 - Intake screens must guard pending advancement. Without a pending ref/state, repeated Continue clicks can create overlapping `/api/intake/next` requests and stuck transitions.
 - Listing cards should always render an image-backed media preview; remote videos can be slow or blank before they emit loaded data.
+- The production root `/` is agent-facing setup, not a pilot buyer page. Pilot agents belong only at their own slugs such as `/maya` and `/david`; completed setup creates the shareable `/{agentSlug}` link.

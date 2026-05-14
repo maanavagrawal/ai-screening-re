@@ -2,6 +2,15 @@
 
 ## Priority 1
 
+- [x] Production root should start agent setup, not Maya
+  - Goal: make the Railway root domain agent-facing while preserving `/{agentSlug}` as the buyer-facing link agents share.
+  - Acceptance:
+    - `/` no longer redirects to `/maya`.
+    - `/` gives agents a clear setup entry and explains their final link becomes `/{slug}`.
+    - `/signup` still works for direct magic-link setup.
+    - Unknown slugs do not send users to Maya.
+    - Typecheck, lint, and targeted e2e coverage pass.
+
 - [x] Phase 2 agent-facing setup wizard and inbox dashboard
   - Goal: build the agent self-serve setup wizard and inbox-style dashboard without adding CRM/pipeline/billing/custom-domain scope.
   - Acceptance:
@@ -91,3 +100,4 @@
 - 2026-05-13: Started Phase 2 planning gate per user request. User then approved moving into implementation after the plan; do not commit or push until tests pass and browser QA is clean.
 - 2026-05-13: Completed Phase 2 implementation: setup wizard, auth/session draft flow, voice/listing setup APIs, dashboard leads/listings/distribution/settings, temperature computation, notifications, docs, host-aware share links, and RLS migration updates. Verified `npm run typecheck`, `npm run lint`, `npm run test`, `npm run e2e`, `npm run build`, plus live in-app browser QA on `/dashboard/leads` and `/dashboard/distribution`. No commit or push was made.
 - 2026-05-13: Switched deployment preference to Railway-first after Supabase setup friction. Added Railway web-service config, Railway Postgres migration script, health check, direct Postgres persistence paths, and Resend-backed magic-link auth for production.
+- 2026-05-13: Fixed production root routing so `/` starts agent setup instead of redirecting to `/maya`; `/{agentSlug}` remains the buyer-facing share URL. Verified typecheck, lint, targeted desktop/mobile Playwright routing coverage, and production build.

@@ -1,6 +1,6 @@
 # AI Screening Real Estate
 
-Buyer-facing Phase 1 of an AI-native, multi-tenant real estate lead-gen platform.
+AI-native, multi-tenant real estate lead-gen platform for agent setup and buyer qualification.
 
 ## Stack
 
@@ -46,7 +46,7 @@ Buyer-facing Phase 1 of an AI-native, multi-tenant real estate lead-gen platform
 6. Seed pilot agents:
 
    ```bash
-   pnpm seed
+   npm run seed
    ```
 
 7. Run the app:
@@ -59,19 +59,25 @@ Buyer-facing Phase 1 of an AI-native, multi-tenant real estate lead-gen platform
 
 1. Fill out `docs/onboarding-checklist.md`.
 2. Add the payload to `lib/pilot-agents.ts` or call `onboardAgent(payload)` from the Phase 2 wizard.
-3. Run `pnpm seed` for local/pilot seeding.
+3. Run `npm run seed` for local/pilot seeding.
 
 All agent creation goes through `onboardAgent(payload)`, which validates the payload and calls the same transaction-backed primitive used by the seed script.
+
+Production routing is split intentionally:
+
+- `/` is the agent-facing setup entry.
+- `/signup` starts magic-link setup directly.
+- `/{agentSlug}` is the buyer-facing link an agent shares after setup, for example `https://your-app.up.railway.app/maya`.
 
 ## Verification
 
 ```bash
 ./scripts/test.sh
 ./scripts/e2e.sh
-pnpm build
+npm run build
 ```
 
-For UI work, run `./scripts/dev.sh` and verify `/maya` and `/david` in the Codex in-app browser at mobile and desktop widths.
+For UI work, run `./scripts/dev.sh` and verify `/`, `/signup`, `/maya`, and `/david` in the Codex in-app browser at mobile and desktop widths.
 
 ## Production Deploy: Railway
 
