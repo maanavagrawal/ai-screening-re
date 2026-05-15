@@ -5,6 +5,7 @@ import { getCurrentUserId } from "@/lib/auth/session";
 import { setDevAgentVerifyCode } from "@/lib/dev-store";
 import { normalizePhone } from "@/lib/phone";
 import { saveSetupDraft } from "@/lib/setup/drafts";
+import { twilioVerifyFailure } from "@/lib/twilio-errors";
 
 const BodySchema = z.object({
   phone: z.string().min(5)
@@ -29,10 +30,16 @@ export async function POST(request: Request) {
   if (canUseTwilio) {
     const { default: twilio } = await import("twilio");
     const client = twilio(process.env.TWILIO_ACCOUNT_SID!, process.env.TWILIO_AUTH_TOKEN!);
-    await client.verify.v2.services(process.env.TWILIO_VERIFY_SERVICE_SID!).verifications.create({
-      to: phone,
-      channel: "sms"
-    });
+    try {
+      await client.verify.v2.services(process.env.TWILIO_VERIFY_SERVICE_SID!).verifications.create({
+        to: phone,
+        channel: "sms"
+      });
+    } catch (error) {
+      const failure = twilioVerifyFailure(error);
+      if (failure) return NextResponse.json(failure.body, { status: failure.status });
+      throw error;
+    }
   } else if (process.env.NODE_ENV === "production") {
     return NextResponse.json({ error: "Twilio Verify is required for production phone verification" }, { status: 500 });
   } else {

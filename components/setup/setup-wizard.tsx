@@ -493,20 +493,33 @@ function PhoneStep(props: {
 }) {
   const [code, setCode] = useState("");
   const [sent, setSent] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [devCode, setDevCode] = useState<string | null>(null);
 
   async function send() {
     props.setBusy("phone-send");
+    setMessage(null);
+    setDevCode(null);
     const response = await fetch("/api/setup/phone/send", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ phone: props.draft.phone })
     });
     props.setBusy(null);
-    if (response.ok) setSent(true);
+    const body = (await response.json().catch(() => null)) as { error?: string; devCode?: string } | null;
+    if (response.ok) {
+      setSent(true);
+      setDevCode(body?.devCode ?? null);
+      setMessage("Code sent. Enter it below to verify this number.");
+    } else {
+      setSent(false);
+      setMessage(body?.error ?? "We could not send that verification code. Please try again.");
+    }
   }
 
   async function check() {
     props.setBusy("phone-check");
+    setMessage(null);
     const response = await fetch("/api/setup/phone/check", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -516,6 +529,9 @@ function PhoneStep(props: {
     if (response.ok) {
       await props.savePatch({ phoneVerified: true });
       props.onNext();
+    } else {
+      const body = (await response.json().catch(() => null)) as { error?: string } | null;
+      setMessage(body?.error ?? "That code did not work. Please check it and try again.");
     }
   }
 
@@ -527,11 +543,16 @@ function PhoneStep(props: {
       </div>
       <Field label="Phone" value={props.draft.phone ?? ""} onChange={(phone) => props.savePatch({ phone })} placeholder="+1 512 555 0141" />
       <Button className="w-full gap-2" disabled={!props.draft.phone || props.busy === "phone-send"} onClick={send}><Phone size={18} /> Send verification code</Button>
+      {message ? (
+        <p className={cn("rounded-2xl border px-4 py-3 text-sm", sent ? "border-warm-border bg-white text-warm-muted" : "border-red-200 bg-red-50 text-red-800")}>
+          {message}
+        </p>
+      ) : null}
       {sent ? (
         <div className="space-y-3">
           <Field label="6-digit code" value={code} onChange={setCode} placeholder="123456" />
           <Button className="w-full" disabled={code.length < 4 || props.busy === "phone-check"} onClick={check}>Verify phone</Button>
-          <p className="text-sm text-warm-muted">Local preview accepts 123456.</p>
+          {devCode ? <p className="text-sm text-warm-muted">Local preview accepts {devCode}.</p> : null}
         </div>
       ) : null}
     </div>
@@ -702,7 +723,16 @@ function ListingEditor(props: {
         <SmallInput label="Beds" value={props.listing.beds != null ? String(props.listing.beds) : ""} onChange={(beds) => props.patch(props.index, { beds: Number(beds) || undefined })} />
         <SmallInput label="Baths" value={props.listing.baths != null ? String(props.listing.baths) : ""} onChange={(baths) => props.patch(props.index, { baths: Number(baths) || undefined })} />
         <SmallInput label="Sqft" value={props.listing.sqft ? String(props.listing.sqft) : ""} onChange={(sqft) => props.patch(props.index, { sqft: Number(sqft) || null })} />
-        <SmallInput label="Video URL" value={props.listing.videoUrl ?? ""} onChange={(videoUrl) => props.patch(props.index, { videoUrl, videoSource: videoUrl.endsWith(".mp4") ? "mp4" : props.listing.videoSource })} />
+        <SmallInput
+          label="Video URL"
+          value={props.listing.videoUrl ?? ""}
+          onChange={(videoUrl) =>
+            props.patch(props.index, {
+              videoUrl,
+              videoSource: videoUrl.trim() ? (videoUrl.endsWith(".mp4") ? "mp4" : props.listing.videoSource) : null
+            })
+          }
+        />
       </div>
       <ChipEditor title="Features" options={MUST_HAVES} selected={props.listing.features ?? []} onChange={(features) => props.patch(props.index, { features })} />
       <ChipEditor title="Deal-breaker flags" options={DEAL_BREAKERS} selected={props.listing.dealBreakerFlags ?? []} onChange={(dealBreakerFlags) => props.patch(props.index, { dealBreakerFlags })} />

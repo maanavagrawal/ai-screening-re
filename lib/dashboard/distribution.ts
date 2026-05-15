@@ -75,14 +75,7 @@ export async function regenerateDistributionData(agent: Agent, leads: Lead[], or
 
   const supabase = getServiceSupabase();
   if (hasPostgresEnv()) {
-    await query(
-      `insert into agent_distribution_templates (agent_id, data, updated_at)
-       values ($1, $2, now())
-       on conflict (agent_id) do update
-       set data = excluded.data,
-           updated_at = now()`,
-      [agent.id, JSON.stringify(data)]
-    );
+    await cacheDistributionDataInPostgres(agent.id, data);
     return data;
   }
 
@@ -100,6 +93,31 @@ export async function regenerateDistributionData(agent: Agent, leads: Lead[], or
     { onConflict: "agent_id" }
   );
   return data;
+}
+
+async function cacheDistributionDataInPostgres(agentId: string, data: DistributionData) {
+  const agentExists = await query<{ id: string }>("select id from agents where id = $1 limit 1", [agentId]);
+  if (!agentExists?.rows[0]) return;
+
+  try {
+    await query(
+      `insert into agent_distribution_templates (agent_id, data, updated_at)
+       values ($1, $2, now())
+       on conflict (agent_id) do update
+       set data = excluded.data,
+           updated_at = now()`,
+      [agentId, JSON.stringify(data)]
+    );
+  } catch (error) {
+    if (isForeignKeyViolation(error, "agent_distribution_templates_agent_id_fkey")) return;
+    throw error;
+  }
+}
+
+function isForeignKeyViolation(error: unknown, constraint: string) {
+  if (!error || typeof error !== "object") return false;
+  const record = error as Record<string, unknown>;
+  return record.code === "23503" && record.constraint === constraint;
 }
 
 export function sourceBreakdown(leads: Lead[]) {

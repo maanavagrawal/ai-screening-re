@@ -2,6 +2,25 @@
 
 ## Priority 1
 
+- [x] Allow setup publish with optional blank listing media
+  - Goal: agents should be able to publish without a video URL because listing media is optional.
+  - Acceptance:
+    - Blank `videoUrl` values from saved setup drafts are normalized to null before onboarding validation.
+    - Other optional listing strings tolerate blank UI values without weakening required listing fields.
+    - The publish error is concise if validation fails again.
+    - Regression coverage proves `onboardAgent()` accepts blank optional listing media.
+    - Typecheck, lint, unit tests, setup e2e, and production build pass.
+
+- [x] Harden setup phone verification and distribution template cache
+  - Goal: setup phone verification should fail clearly under Twilio trial restrictions, and dashboard template caching should never crash unrelated setup/dashboard pages.
+  - Acceptance:
+    - Twilio error 21608 returns a user-actionable response instead of an unhandled route error.
+    - Setup phone UI displays the actionable message.
+    - Dashboard leads/listings/settings pages do not eagerly generate distribution templates.
+    - Distribution template cache skips or tolerates writes when the agent row disappears during setup/session churn.
+    - Regression tests cover Twilio trial errors and stale distribution agent IDs.
+    - Typecheck, lint, unit tests, and production build pass.
+
 - [x] Redact buyer-facing listing addresses
   - Goal: prevent buyers from seeing or inspecting exact street addresses before they request a showing.
   - Acceptance:
@@ -161,3 +180,5 @@
 - 2026-05-13: Hardened `/auth/verify`: GET now renders a no-store confirmation page without consuming the token, POST consumes it and creates the session, and all redirects use the public-origin helper. Verified focused route tests, typecheck, lint, all unit tests, and production build.
 - 2026-05-14: Changed setup link placement controls into copyable tags and added listing autofill from pasted captions, MLS remarks, flyer text, or notes. Deliberately avoided stealth Zillow/Redfin/MLS scraping; the production path is user-provided text now and authorized data feeds later. Verified typecheck, lint, all unit tests, targeted setup e2e, and production build.
 - 2026-05-14: Redacted exact listing addresses from buyer-facing landing cards, matches API payloads, match cards, and buyer AI prompt inputs. Agent dashboard/setup still keep full addresses. Verified typecheck, lint, all unit tests, targeted buyer e2e reruns, and production build. The first full buyer e2e run hit an existing desktop adaptive-intake timeout, then the failed desktop cases passed individually on fresh rerun.
+- 2026-05-14: Hardened Twilio verification failures and optional distribution template caching. Twilio trial-account error 21608 now returns an actionable response instead of an unhandled server error, setup/showing UIs display provider send failures, dashboard non-distribution pages no longer generate distribution templates, and stale agent template cache writes are skipped/tolerated. Verified focused regressions, typecheck, lint, all unit tests, Phase 2 e2e, and production build.
+- 2026-05-14: Fixed setup publish failing on blank optional listing video URLs. `onboardAgent()` now normalizes blank optional listing strings/URLs to null, the video URL input clears `videoSource` when empty, and setup publish validation returns concise messages instead of raw Zod JSON. Verified focused regression, typecheck, lint, all unit tests, Phase 2 setup e2e, and production build after rerunning build separately from Playwright.

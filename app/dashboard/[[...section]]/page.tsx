@@ -4,7 +4,7 @@ import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import { getCurrentAgent } from "@/lib/auth/session";
 import { agentBaseUrl } from "@/lib/dashboard/client-utils";
 import { getDashboardSummary } from "@/lib/dashboard/data";
-import { getDistributionData } from "@/lib/dashboard/distribution";
+import { getDistributionData, sourceBreakdown } from "@/lib/dashboard/distribution";
 import { getPublicOriginFromHeaders } from "@/lib/public-origin";
 import { qrDataUrl } from "@/lib/qr";
 
@@ -19,9 +19,12 @@ export default async function DashboardPage({ params }: { params: Promise<{ sect
 
   const summary = await getDashboardSummary(agent);
   const origin = await requestOrigin();
-  const distribution = await getDistributionData(agent, summary.leads, origin);
   const url = agentBaseUrl(agent, origin);
-  const qr = await qrDataUrl(url);
+  const distribution =
+    section === "distribution"
+      ? await getDistributionData(agent, summary.leads, origin)
+      : { bioTemplates: [], replyTemplates: [], attribution: sourceBreakdown(summary.leads), updatedAt: new Date(0).toISOString() };
+  const qr = section === "distribution" ? await qrDataUrl(url) : "";
 
   return (
     <DashboardShell

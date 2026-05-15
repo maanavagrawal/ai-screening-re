@@ -5,6 +5,7 @@ import { setDevVerifyCode } from "@/lib/dev-store";
 import { logEvents } from "@/lib/events";
 import { findLeadById } from "@/lib/leads";
 import { resolveAgentBySlug } from "@/lib/resolve-agent";
+import { twilioVerifyFailure } from "@/lib/twilio-errors";
 
 const BodySchema = z.object({
   agent_slug: z.string().min(1),
@@ -38,9 +39,15 @@ export async function POST(request: Request) {
     const authToken = process.env.TWILIO_AUTH_TOKEN as string;
     const verifyServiceSid = process.env.TWILIO_VERIFY_SERVICE_SID as string;
     const client = twilio(accountSid, authToken);
-    await client.verify.v2
-      .services(verifyServiceSid)
-      .verifications.create({ to: lead.phone, channel: "sms" });
+    try {
+      await client.verify.v2
+        .services(verifyServiceSid)
+        .verifications.create({ to: lead.phone, channel: "sms" });
+    } catch (error) {
+      const failure = twilioVerifyFailure(error);
+      if (failure) return NextResponse.json(failure.body, { status: failure.status });
+      throw error;
+    }
   } else {
     setDevVerifyCode(lead.id, "123456");
   }

@@ -42,10 +42,13 @@ export function RequestShowingSheet({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ agent_slug: agent.slug, lead_id: lead.id, listing_id: listing.id })
       });
-      if (!response.ok) throw new Error("Code could not be sent.");
+      if (!response.ok) {
+        const body = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(body?.error ?? "Code could not be sent.");
+      }
       setCodeSent(true);
-    } catch {
-      setError("We could not send that code. Please try again.");
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "We could not send that code. Please try again.");
     } finally {
       setBusy(false);
     }

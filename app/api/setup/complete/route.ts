@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { ZodError } from "zod";
 import { getCurrentUserId, setAgentSession } from "@/lib/auth/session";
 import { onboardAgent } from "@/lib/onboard-agent";
 import { resolveAgentBySlug } from "@/lib/resolve-agent";
@@ -38,6 +39,18 @@ function makePayload(data: Partial<AgentSetupDraftData>, userId: string) {
   };
 }
 
+function setupErrorMessage(error: unknown) {
+  if (error instanceof ZodError) {
+    const issue = error.issues[0];
+    if (!issue) return "Some setup fields need a quick fix before publishing";
+    if (issue.path[0] === "listings" && typeof issue.path[1] === "number") {
+      return `Listing ${issue.path[1] + 1}: ${issue.message}`;
+    }
+    return issue.message;
+  }
+  return error instanceof Error ? error.message : "Unable to complete setup";
+}
+
 export async function POST() {
   const userId = await getCurrentUserId();
   if (!userId) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
@@ -57,7 +70,7 @@ export async function POST() {
     return NextResponse.json({ agent });
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Unable to complete setup" },
+      { error: setupErrorMessage(error) },
       { status: 400 }
     );
   }
