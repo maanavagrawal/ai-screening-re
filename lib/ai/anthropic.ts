@@ -211,7 +211,7 @@ export async function extractPreferences(input: {
   }
 }
 
-function answered(answers: IntakeAnswers, question: QuestionId) {
+export function questionAnswered(answers: IntakeAnswers, question: QuestionId) {
   if (answers.answered_question_ids?.includes(question)) return true;
   const extraction = {
     ...(answers.extraction ?? {}),
@@ -230,8 +230,8 @@ function extractionConfident(answers: IntakeAnswers, key: keyof FreeTextExtracti
 
 export function fallbackNextQuestion(answers: IntakeAnswers): { next_question_id: QuestionId; reason: string } {
   const count = answers.answered_question_ids?.length ?? 0;
-  if (!answered(answers, "timeline")) return { next_question_id: "timeline", reason: "Timeline always starts." };
-  if (!answered(answers, "free_text")) return { next_question_id: "free_text", reason: "Free text is always second." };
+  if (!questionAnswered(answers, "timeline")) return { next_question_id: "timeline", reason: "Timeline always starts." };
+  if (!questionAnswered(answers, "free_text")) return { next_question_id: "free_text", reason: "Free text is always second." };
   if (count >= 9) return { next_question_id: "done", reason: "Hard cap reached." };
 
   const browsing =
@@ -262,26 +262,43 @@ export function fallbackNextQuestion(answers: IntakeAnswers): { next_question_id
     if (question === "neighborhoods" && extractionConfident(answers, "neighborhoods")) continue;
     if (question === "must_haves" && extractionConfident(answers, "must_haves")) continue;
     if (question === "deal_breakers" && extractionConfident(answers, "deal_breakers")) continue;
-    if (!answered(answers, question)) return { next_question_id: question, reason: `Next missing ${question}.` };
+    if (!questionAnswered(answers, question)) return { next_question_id: question, reason: `Next missing ${question}.` };
   }
 
   const hasBudget =
-    answered(answers, "budget") ||
+    questionAnswered(answers, "budget") ||
     extractionConfident(answers, "budget_min") ||
     extractionConfident(answers, "budget_max");
-  const hasBedrooms = answered(answers, "bedrooms") || extractionConfident(answers, "beds");
-  const hasNeighborhoods = answered(answers, "neighborhoods") || extractionConfident(answers, "neighborhoods");
+  const hasBedrooms = questionAnswered(answers, "bedrooms") || extractionConfident(answers, "beds");
+  const hasNeighborhoods = questionAnswered(answers, "neighborhoods") || extractionConfident(answers, "neighborhoods");
   const stillAmbiguous = !hasBudget || !hasBedrooms || !hasNeighborhoods;
 
-  if (stillAmbiguous && !answered(answers, "anything_else") && count < 9) {
+  if (stillAmbiguous && !questionAnswered(answers, "anything_else") && count < 9) {
     return { next_question_id: "anything_else", reason: "Core preferences are still ambiguous." };
   }
 
   return { next_question_id: "done", reason: "Enough information to create matches." };
 }
 
+export function shouldUseAiNextQuestion() {
+  return canUseAnthropic() && process.env.ENABLE_AI_INTAKE_NEXT === "1";
+}
+
+export function safeNextQuestionDecision(
+  answers: IntakeAnswers,
+  decision: { next_question_id: QuestionId; reason?: string }
+) {
+  if (decision.next_question_id === "done") return decision;
+  if (questionAnswered(answers, decision.next_question_id)) {
+    return fallbackNextQuestion(answers);
+  }
+  return decision;
+}
+
 export async function chooseNextQuestion(input: { agent: Agent; listings?: Listing[]; answers: IntakeAnswers }) {
-  if (!canUseAnthropic()) return fallbackNextQuestion(input.answers);
+  const fallback = fallbackNextQuestion(input.answers);
+  if (!shouldUseAiNextQuestion()) return fallback;
+  if (fallback.next_question_id === "timeline" || fallback.next_question_id === "free_text") return fallback;
 
   const prompt = nextQuestionPrompt({
     agent: input.agent,
@@ -291,12 +308,13 @@ export async function chooseNextQuestion(input: { agent: Agent; listings?: Listi
   });
 
   try {
-    return await generateAnthropicObject<{ next_question_id: QuestionId; reason?: string }>(
+    const decision = await generateAnthropicObject<{ next_question_id: QuestionId; reason?: string }>(
       IntakeNextQuestionDecisionSchema,
       prompt
     );
+    return safeNextQuestionDecision(input.answers, decision);
   } catch {
-    return fallbackNextQuestion(input.answers);
+    return fallback;
   }
 }
 

@@ -2,6 +2,16 @@
 
 ## Priority 1
 
+- [x] Fix repeated free-text intake and speed up next-question taps
+  - Goal: buyer intake should never show the free-text question twice and structured tap questions should advance quickly.
+  - Acceptance:
+    - Accepting extracted free-text always stores `free_text_raw` before choosing the next screen.
+    - `/api/intake/next` no longer waits on Anthropic by default for every tap.
+    - If AI next-question selection is explicitly enabled, answered/repeated questions are rejected in favor of deterministic fallback.
+    - Unit coverage proves answered free-text cannot be returned again.
+    - Buyer e2e intake flow still reaches gate.
+    - Typecheck, lint, unit tests, targeted buyer e2e, and production build pass.
+
 - [x] Allow setup publish with optional blank listing media
   - Goal: agents should be able to publish without a video URL because listing media is optional.
   - Acceptance:
@@ -182,3 +192,4 @@
 - 2026-05-14: Redacted exact listing addresses from buyer-facing landing cards, matches API payloads, match cards, and buyer AI prompt inputs. Agent dashboard/setup still keep full addresses. Verified typecheck, lint, all unit tests, targeted buyer e2e reruns, and production build. The first full buyer e2e run hit an existing desktop adaptive-intake timeout, then the failed desktop cases passed individually on fresh rerun.
 - 2026-05-14: Hardened Twilio verification failures and optional distribution template caching. Twilio trial-account error 21608 now returns an actionable response instead of an unhandled server error, setup/showing UIs display provider send failures, dashboard non-distribution pages no longer generate distribution templates, and stale agent template cache writes are skipped/tolerated. Verified focused regressions, typecheck, lint, all unit tests, Phase 2 e2e, and production build.
 - 2026-05-14: Fixed setup publish failing on blank optional listing video URLs. `onboardAgent()` now normalizes blank optional listing strings/URLs to null, the video URL input clears `videoSource` when empty, and setup publish validation returns concise messages instead of raw Zod JSON. Verified focused regression, typecheck, lint, all unit tests, Phase 2 setup e2e, and production build after rerunning build separately from Playwright.
+- 2026-05-14: Fixed repeated free-text intake and slow structured taps without removing the product's AI quality. Free-text extraction still uses AI; next-question advancement now uses the deterministic confidence/skip logic by default to avoid per-tap model latency, with an opt-in `ENABLE_AI_INTAKE_NEXT=1` path guarded against repeated answered questions. Verified focused AI helper regression, typecheck, lint, all unit tests, buyer e2e on desktop/mobile, and production build.

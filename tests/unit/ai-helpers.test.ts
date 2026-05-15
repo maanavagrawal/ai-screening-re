@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fallbackExtraction, fallbackNextQuestion } from "@/lib/ai/anthropic";
+import { fallbackExtraction, fallbackNextQuestion, safeNextQuestionDecision } from "@/lib/ai/anthropic";
 import type { Agent } from "@/lib/types";
 
 const agent: Agent = {
@@ -36,6 +36,19 @@ describe("AI fallbacks", () => {
       timeline: { preset: "60_days" },
       free_text_raw: "Looking near Mueller."
     });
+
+    expect(decision.next_question_id).toBe("current_situation");
+  });
+
+  it("guards an AI decision that tries to repeat an answered free-text question", () => {
+    const decision = safeNextQuestionDecision(
+      {
+        answered_question_ids: ["timeline", "free_text"],
+        timeline: { preset: "60_days" },
+        free_text_raw: "Looking near Mueller."
+      },
+      { next_question_id: "free_text", reason: "Bad repeated model choice." }
+    );
 
     expect(decision.next_question_id).toBe("current_situation");
   });

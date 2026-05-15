@@ -52,6 +52,7 @@ export function IntakeFlow({ agent }: { agent: Agent }) {
   const [advancing, setAdvancing] = useState(false);
   const advancingRef = useRef(false);
   const [reviewExtraction, setReviewExtraction] = useState<FreeTextExtractionResult | null>(null);
+  const [reviewFreeText, setReviewFreeText] = useState<string | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -82,7 +83,7 @@ export function IntakeFlow({ agent }: { agent: Agent }) {
   }, [answers, question, storageKey]);
 
   async function advance(questionId: QuestionId, value: unknown, patch: Partial<IntakeAnswers> = {}) {
-    if (advancingRef.current) return;
+    if (advancingRef.current) return false;
     advancingRef.current = true;
     setAdvancing(true);
     setError("");
@@ -134,8 +135,10 @@ export function IntakeFlow({ agent }: { agent: Agent }) {
       } else {
         setQuestion(decision.next_question_id);
       }
+      return true;
     } catch {
       setError("We could not save that answer. Please try again.");
+      return false;
     } finally {
       advancingRef.current = false;
       setAdvancing(false);
@@ -156,6 +159,7 @@ export function IntakeFlow({ agent }: { agent: Agent }) {
       const data = (await response.json()) as { extraction: FreeTextExtractionResult };
       if (!data.extraction) throw new Error("Intake extraction was missing.");
       setAnswers((current) => ({ ...current, free_text_raw: value, extraction: data.extraction }));
+      setReviewFreeText(value);
       setReviewExtraction(data.extraction);
     } catch {
       setError("We could not read those notes. Please try again.");
@@ -164,12 +168,17 @@ export function IntakeFlow({ agent }: { agent: Agent }) {
     }
   }
 
-  function acceptExtraction(extraction: FreeTextExtractionResult) {
-    setReviewExtraction(null);
-    void advance("free_text", answers.free_text_raw ?? "", {
+  async function acceptExtraction(extraction: FreeTextExtractionResult) {
+    const rawText = reviewFreeText ?? answers.free_text_raw ?? "";
+    const accepted = await advance("free_text", rawText, {
+      free_text_raw: rawText,
       extraction: answers.extraction ?? extraction,
       accepted_extraction: extraction
     });
+    if (accepted) {
+      setReviewExtraction(null);
+      setReviewFreeText(null);
+    }
   }
 
   const neighborhoodOptions = [
@@ -192,7 +201,8 @@ export function IntakeFlow({ agent }: { agent: Agent }) {
           {reviewExtraction ? (
             <ExtractionReview
               extraction={reviewExtraction}
-              onAccept={acceptExtraction}
+              disabled={advancing}
+              onAccept={(extraction) => void acceptExtraction(extraction)}
               onEdited={() => track("intake_extraction_edited")}
             />
           ) : question === "timeline" ? (

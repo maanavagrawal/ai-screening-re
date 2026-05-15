@@ -25,11 +25,13 @@ function chipsFromExtraction(extraction: FreeTextExtractionResult): ChipValue[] 
 export function ExtractionReview({
   extraction,
   onAccept,
-  onEdited
+  onEdited,
+  disabled = false
 }: {
   extraction: FreeTextExtractionResult;
   onAccept: (extraction: FreeTextExtractionResult) => void;
   onEdited: () => void;
+  disabled?: boolean;
 }) {
   const chips = useMemo(() => chipsFromExtraction(extraction), [extraction]);
   const [editing, setEditing] = useState(false);
@@ -76,11 +78,12 @@ export function ExtractionReview({
         )}
       </div>
       <div className="mt-6 grid gap-3">
-        <Button onClick={() => onAccept(acceptedExtraction())}>
-          {editing ? "Save and continue" : "Yes, continue"}
+        <Button disabled={disabled} onClick={() => onAccept(acceptedExtraction())}>
+          {disabled ? "Continuing..." : editing ? "Save and continue" : "Yes, continue"}
         </Button>
         <Button
           variant="secondary"
+          disabled={disabled}
           onClick={() => {
             setEditing(true);
             onEdited();
