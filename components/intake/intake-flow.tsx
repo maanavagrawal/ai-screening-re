@@ -19,6 +19,7 @@ import { PreapprovalUploadQuestion } from "@/components/intake/questions/preappr
 import { TimelineQuestion } from "@/components/intake/questions/timeline-question";
 import { AnythingElseQuestion } from "@/components/intake/questions/anything-else-question";
 import type { FreeTextExtractionResult, IntakeAnswers, QuestionId } from "@/lib/ai/schemas";
+import { fallbackNextQuestion } from "@/lib/intake/next-question";
 import type { Agent } from "@/lib/types";
 import { useSessionId } from "@/hooks/use-session-id";
 import { useTrackEvent } from "@/hooks/use-track-event";
@@ -121,14 +122,7 @@ export function IntakeFlow({ agent }: { agent: Agent }) {
     track("intake_question_answered", { q_id: questionId, answer: value });
 
     try {
-      const response = await fetch("/api/intake/next", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agent_slug: agent.slug, answers: nextAnswers })
-      });
-      if (!response.ok) throw new Error("Unable to choose the next intake question.");
-      const decision = (await response.json()) as { next_question_id: QuestionId };
-      if (!decision.next_question_id) throw new Error("Next intake question was missing.");
+      const decision = fallbackNextQuestion(nextAnswers);
       if (decision.next_question_id === "done") {
         track("intake_completed");
         router.push(`/${agent.slug}/gate`);

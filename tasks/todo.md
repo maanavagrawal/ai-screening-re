@@ -2,6 +2,15 @@
 
 ## Priority 1
 
+- [x] Make buyer intake Continue taps instant
+  - Goal: structured intake screens should change immediately after Continue, without waiting on a server round trip.
+  - Acceptance:
+    - Client intake uses the same deterministic next-question primitive as the API.
+    - `/api/intake/next` remains available and covered for server-side contracts.
+    - Free-text extraction still uses the AI extraction route and review chips.
+    - Playwright browser QA proves timeline Continue advances without calling `/api/intake/next`.
+    - Typecheck, lint, focused unit tests, buyer e2e, and production build pass.
+
 - [x] Remove stock property imagery from buyer match cards
   - Goal: buyer-facing cards should only show actual listing media provided by the agent or future authorized MLS/IDX feeds.
   - Acceptance:
@@ -203,3 +212,4 @@
 - 2026-05-14: Fixed setup publish failing on blank optional listing video URLs. `onboardAgent()` now normalizes blank optional listing strings/URLs to null, the video URL input clears `videoSource` when empty, and setup publish validation returns concise messages instead of raw Zod JSON. Verified focused regression, typecheck, lint, all unit tests, Phase 2 setup e2e, and production build after rerunning build separately from Playwright.
 - 2026-05-14: Fixed repeated free-text intake and slow structured taps without removing the product's AI quality. Free-text extraction still uses AI; next-question advancement now uses the deterministic confidence/skip logic by default to avoid per-tap model latency, with an opt-in `ENABLE_AI_INTAKE_NEXT=1` path guarded against repeated answered questions. Verified focused AI helper regression, typecheck, lint, all unit tests, buyer e2e on desktop/mobile, and production build.
 - 2026-05-14: Removed stock property imagery from buyer match cards. Cards now show only agent-provided non-stock MP4 media; known Unsplash/Pexels stock/demo media is suppressed and no-media cards render a neutral branded panel. Documented authorized MLS/IDX/RESO as the future real-media path. Verified focused listing-card media tests, listing privacy tests, typecheck, lint, buyer e2e on desktop/mobile, and production build.
+- 2026-05-14: Fixed structured buyer-intake Continue latency by moving next-question selection into a shared client-safe deterministic helper. The server `/api/intake/next` contract remains for AI/server use, but ordinary structured taps no longer wait on it. Verified focused unit tests, a targeted Playwright no-network latency regression, main buyer e2e, typecheck, lint, and production build. The Codex in-app browser control channel timed out after hot reload, so live visible verification should use the freshly restarted dev server.

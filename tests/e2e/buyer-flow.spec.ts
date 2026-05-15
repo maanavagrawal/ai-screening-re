@@ -188,6 +188,22 @@ test("buyer can complete intake, see matches, and request a showing", async ({ p
   await expect(page.getByText("When works for you?")).toBeVisible({ timeout: 15_000 });
 });
 
+test("structured intake Continue advances without next-question request", async ({ page }) => {
+  let nextQuestionRequests = 0;
+  page.on("request", (request) => {
+    if (request.url().includes("/api/intake/next")) nextQuestionRequests += 1;
+  });
+
+  await page.goto("/maya/intake?start_over=1");
+  await page.getByRole("button", { name: "30 days" }).click();
+  const started = Date.now();
+  await clickContinueAndWait(page);
+
+  await expect(page.getByText("In your words")).toBeVisible();
+  expect(Date.now() - started).toBeLessThan(1_500);
+  expect(nextQuestionRequests).toBe(0);
+});
+
 test("/agents is not a directory page", async ({ page }) => {
   await page.goto("/agents");
   await expect(page.getByText("This link is not active.")).toBeVisible();

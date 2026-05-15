@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { fallbackExtraction, fallbackNextQuestion, safeNextQuestionDecision } from "@/lib/ai/anthropic";
+import { fallbackExtraction } from "@/lib/ai/anthropic";
+import { fallbackNextQuestion, safeNextQuestionDecision } from "@/lib/intake/next-question";
 import type { Agent } from "@/lib/types";
 
 const agent: Agent = {
