@@ -11,7 +11,7 @@
 - Do not run `next build` at the same time as Playwright or a watched `next dev` server. Next mutates `.next`, and overlapping processes can produce stale chunk/runtime errors that disappear when build and dev are run separately.
 - The Codex in-app browser is best for visible navigation, clicks, screenshots, and console checks. If text entry fails because the browser surface lacks clipboard APIs, use Playwright e2e for form-typing proof and keep browser QA focused on live visual/click verification.
 - Intake screens must guard pending advancement. Without a pending ref/state, repeated Continue clicks can create overlapping `/api/intake/next` requests and stuck transitions.
-- Listing cards should always render an image-backed media preview; remote videos can be slow or blank before they emit loaded data.
+- Listing cards must not use stock fallback property images. Buyer-facing media should be actual agent-provided listing media or future authorized MLS/IDX media; no-media cards should use a neutral branded panel.
 - The production root `/` is agent-facing setup, not a pilot buyer page. Pilot agents belong only at their own slugs such as `/maya` and `/david`; completed setup creates the shareable `/{agentSlug}` link.
 - Railway server routes should avoid browser-only runtime constructors such as `File`; validate multipart uploads structurally and keep `sharp` routes pinned to `runtime = "nodejs"`.
 - Production signup must fail closed if `DATABASE_URL`/`RESEND_API_KEY` or another real auth provider is missing. The dev setup redirect belongs only in local dev or with explicit `ALLOW_DEV_AGENT_AUTH=1`.

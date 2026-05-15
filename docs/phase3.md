@@ -10,6 +10,10 @@ Extend `resolveAgent(request)` to inspect the request host. If the host is `{slu
 
 Use the `domains` table for verified custom domains and map them through Railway's custom-domain flow. `resolveAgent(request)` should check exact host matches against `domains.domain`.
 
+## Authorized Listing Media
+
+Add real listing photos/video through an authorized MLS/IDX/RESO data path rather than scraping Zillow, Redfin, or MLS pages from an address. The dashboard/setup flow should let agents connect a licensed feed or paste/upload media they have rights to use. Buyer cards should keep exact addresses redacted until showing intent, even when media comes from MLS.
+
 ## Billing
 
 - Add subscription plans after the setup wizard and dashboard prove retention.

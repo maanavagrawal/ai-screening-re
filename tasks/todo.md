@@ -2,6 +2,15 @@
 
 ## Priority 1
 
+- [x] Remove stock property imagery from buyer match cards
+  - Goal: buyer-facing cards should only show actual listing media provided by the agent or future authorized MLS/IDX feeds.
+  - Acceptance:
+    - Unsplash fallback house images are removed from match cards.
+    - Known stock/demo media hosts are not rendered as buyer-facing property media.
+    - No-media listings show a neutral branded panel rather than a fake property photo.
+    - Verification proves buyer card source no longer contains Unsplash poster fallbacks.
+    - Typecheck, lint, focused unit test, buyer e2e, and production build pass.
+
 - [x] Fix repeated free-text intake and speed up next-question taps
   - Goal: buyer intake should never show the free-text question twice and structured tap questions should advance quickly.
   - Acceptance:
@@ -193,3 +202,4 @@
 - 2026-05-14: Hardened Twilio verification failures and optional distribution template caching. Twilio trial-account error 21608 now returns an actionable response instead of an unhandled server error, setup/showing UIs display provider send failures, dashboard non-distribution pages no longer generate distribution templates, and stale agent template cache writes are skipped/tolerated. Verified focused regressions, typecheck, lint, all unit tests, Phase 2 e2e, and production build.
 - 2026-05-14: Fixed setup publish failing on blank optional listing video URLs. `onboardAgent()` now normalizes blank optional listing strings/URLs to null, the video URL input clears `videoSource` when empty, and setup publish validation returns concise messages instead of raw Zod JSON. Verified focused regression, typecheck, lint, all unit tests, Phase 2 setup e2e, and production build after rerunning build separately from Playwright.
 - 2026-05-14: Fixed repeated free-text intake and slow structured taps without removing the product's AI quality. Free-text extraction still uses AI; next-question advancement now uses the deterministic confidence/skip logic by default to avoid per-tap model latency, with an opt-in `ENABLE_AI_INTAKE_NEXT=1` path guarded against repeated answered questions. Verified focused AI helper regression, typecheck, lint, all unit tests, buyer e2e on desktop/mobile, and production build.
+- 2026-05-14: Removed stock property imagery from buyer match cards. Cards now show only agent-provided non-stock MP4 media; known Unsplash/Pexels stock/demo media is suppressed and no-media cards render a neutral branded panel. Documented authorized MLS/IDX/RESO as the future real-media path. Verified focused listing-card media tests, listing privacy tests, typecheck, lint, buyer e2e on desktop/mobile, and production build.
