@@ -5,6 +5,7 @@ import {
   isAgentMagicLinkUsable,
   setAgentSession
 } from "@/lib/auth/session";
+import { resolveAgentAccessDestination } from "@/lib/auth/destinations";
 import { hasPostgresEnv } from "@/lib/db/postgres";
 import { getPublicOriginFromRequest } from "@/lib/public-origin";
 
@@ -44,7 +45,11 @@ export async function POST(request: Request) {
   if (!link) return redirectToPublic(request, "/signup?expired=1");
 
   await setAgentSession({ userId: link.user_id, email: link.email });
-  return redirectToPublic(request, "/setup/welcome");
+  const destination = await resolveAgentAccessDestination({
+    userId: link.user_id,
+    returnTo: link.return_to
+  });
+  return redirectToPublic(request, destination);
 }
 
 function redirectToPublic(request: Request, path: string) {
@@ -67,7 +72,7 @@ function renderConfirmationPage(input: { token: string; origin: string }) {
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Continue setup</title>
+    <title>Continue</title>
     <style>
       :root { color-scheme: light; }
       body {
@@ -117,11 +122,11 @@ function renderConfirmationPage(input: { token: string; origin: string }) {
   </head>
   <body>
     <main>
-      <h1>Continue your setup.</h1>
-      <p>This extra click protects your setup link from email security previews that open links before you do.</p>
+      <h1>Continue.</h1>
+      <p>This extra click protects your sign-in link from email security previews that open links before you do.</p>
       <form method="post" action="/auth/verify">
         <input type="hidden" name="token" value="${escapedToken}" />
-        <button type="submit">Continue setup</button>
+        <button type="submit">Continue</button>
       </form>
       <p><a href="${input.origin}/signup">Request a fresh link</a></p>
     </main>

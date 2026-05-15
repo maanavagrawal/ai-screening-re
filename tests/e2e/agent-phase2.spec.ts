@@ -2,14 +2,33 @@ import { expect, test } from "@playwright/test";
 
 const videoUrl = "https://videos.pexels.com/video-files/7578545/7578545-uhd_1440_2732_25fps.mp4";
 
-test("root domain starts agent setup instead of a pilot agent page", async ({ page }) => {
+test("root domain routes buyers, sellers, and agents by intent", async ({ page }) => {
   await page.goto("/");
   await expect(page).not.toHaveURL(/\/maya$/);
-  await expect(page.getByRole("heading", { name: "Set up your personal buyer link." })).toBeVisible();
-  await expect(page.getByText("/your-name", { exact: true })).toBeVisible();
-  await page.getByRole("link", { name: "Start setup" }).click();
-  await expect(page).toHaveURL(/\/signup$/);
-  await expect(page.getByRole("heading", { name: "Launch your buyer link" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "What are you here to do?" })).toBeVisible();
+
+  await page.getByRole("button", { name: /Buy a home/ }).click();
+  await page.getByLabel("Agent link or code").fill("maya");
+  await page.getByRole("button", { name: "Check link" }).click();
+  await page.getByRole("button", { name: "Continue to Maya Chen" }).click();
+  await expect(page).toHaveURL(/\/maya$/);
+
+  await page.goto("/");
+  await page.getByRole("button", { name: /Sell a home/ }).click();
+  await page.getByLabel("Agent link or code").fill("/maya");
+  await page.getByRole("button", { name: "Check link" }).click();
+  await page.getByRole("button", { name: "Continue to Maya Chen" }).click();
+  await expect(page).toHaveURL(/\/maya\/seller$/);
+
+  await page.goto("/");
+  await page.getByRole("button", { name: /I am an agent/ }).click();
+  await expect(page.getByRole("heading", { name: "Sign in or create your agent link" })).toBeVisible();
+
+  await page.goto("/");
+  await page.getByRole("button", { name: /Buy a home/ }).click();
+  await page.getByLabel("Agent link or code").fill("/dashboard");
+  await page.getByRole("button", { name: "Check link" }).click();
+  await expect(page.getByText("We could not find that agent link.")).toBeVisible();
 });
 
 test("agent can publish setup, receive a lead, and work it from the dashboard", async ({ page }, testInfo) => {
@@ -23,7 +42,7 @@ test("agent can publish setup, receive a lead, and work it from the dashboard", 
   const sendMagicLink = page.getByRole("button", { name: "Send magic link" });
   await expect(sendMagicLink).toBeEnabled();
   await sendMagicLink.click();
-  await page.getByRole("button", { name: "Continue setup" }).click();
+  await page.getByRole("button", { name: "Continue" }).click();
   await expect(page.getByText("In 10 minutes")).toBeVisible();
 
   await page.request.post("/api/setup/save-draft", {
@@ -92,6 +111,28 @@ test("agent can publish setup, receive a lead, and work it from the dashboard", 
 
   await page.goto("/dashboard/listings", { waitUntil: "domcontentloaded" });
   await expect(page.getByText("123 Maple Street")).toBeVisible();
+
+  await page.goto(`/${slug}/seller`, { waitUntil: "domcontentloaded" });
+  await expect(page.getByTestId("seller-form-ready")).toHaveText("ready");
+  await page.getByLabel("First name").fill("Riley");
+  await page.getByLabel("Phone").fill("(303) 555-0188");
+  await page.getByLabel("Email").fill("riley@example.com");
+  await page.getByLabel("Property address").fill("55 Seller Lane");
+  await page.getByLabel("Notes").fill("Trying to understand prep before listing.");
+  const sellerResponse = page.waitForResponse((response) =>
+    response.url().includes("/api/seller-leads")
+  );
+  await page.getByRole("button", { name: "Send to agent" }).click();
+  expect((await sellerResponse).status()).toBe(200);
+  await expect(page.getByRole("heading", { name: `Sent to Elena Ruiz.` })).toBeVisible();
+
+  await page.goto("/dashboard/leads", { waitUntil: "domcontentloaded" });
+  await expect(page.getByTestId("dashboard-ready")).toHaveText("ready");
+  await page.getByPlaceholder("Search leads").fill("Riley");
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("button", { name: /Riley seller/ })).toBeVisible();
+  await expect(page.getByText("seller").first()).toBeVisible();
+  await expect(page.getByText("Property: 55 Seller Lane")).toBeVisible();
 });
 
 function listing(address: string, price: number, beds: number, baths: number, neighborhood: string, isPocket: boolean) {

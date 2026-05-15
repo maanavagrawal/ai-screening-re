@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   getAgentMagicLink: vi.fn(),
   isAgentMagicLinkUsable: vi.fn(),
   setAgentSession: vi.fn(),
+  resolveAgentAccessDestination: vi.fn(),
   hasPostgresEnv: vi.fn(),
   getPublicOriginFromRequest: vi.fn()
 }));
@@ -25,12 +26,17 @@ vi.mock("@/lib/public-origin", () => ({
   getPublicOriginFromRequest: mocks.getPublicOriginFromRequest
 }));
 
+vi.mock("@/lib/auth/destinations", () => ({
+  resolveAgentAccessDestination: mocks.resolveAgentAccessDestination
+}));
+
 describe("/auth/verify", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.hasPostgresEnv.mockReturnValue(true);
     mocks.getPublicOriginFromRequest.mockReturnValue("https://app.example.com");
     mocks.isAgentMagicLinkUsable.mockReturnValue(true);
+    mocks.resolveAgentAccessDestination.mockResolvedValue("/dashboard/leads");
   });
 
   it("does not consume a valid magic link on GET", async () => {
@@ -38,6 +44,7 @@ describe("/auth/verify", () => {
       id: "link_1",
       user_id: "user_1",
       email: "agent@example.com",
+      return_to: null,
       used_at: null,
       expires_at: new Date(Date.now() + 60_000).toISOString()
     });
@@ -53,12 +60,14 @@ describe("/auth/verify", () => {
     expect(mocks.consumeAgentMagicLink).not.toHaveBeenCalled();
   });
 
-  it("consumes a magic link on POST and redirects to the public setup URL", async () => {
+  it("consumes a magic link on POST and redirects through the destination resolver", async () => {
     mocks.consumeAgentMagicLink.mockResolvedValue({
       id: "link_1",
       user_id: "user_1",
-      email: "agent@example.com"
+      email: "agent@example.com",
+      return_to: "/dashboard/listings"
     });
+    mocks.resolveAgentAccessDestination.mockResolvedValue("/dashboard/listings");
 
     const response = await POST(
       new Request("https://0.0.0.0:8080/auth/verify", {
@@ -73,7 +82,11 @@ describe("/auth/verify", () => {
       userId: "user_1",
       email: "agent@example.com"
     });
-    expect(response.headers.get("location")).toBe("https://app.example.com/setup/welcome");
+    expect(mocks.resolveAgentAccessDestination).toHaveBeenCalledWith({
+      userId: "user_1",
+      returnTo: "/dashboard/listings"
+    });
+    expect(response.headers.get("location")).toBe("https://app.example.com/dashboard/listings");
   });
 
   it("redirects expired GET tokens to the public signup URL", async () => {
@@ -92,6 +105,7 @@ describe("/auth/verify", () => {
       id: "link_1",
       user_id: "user_1",
       email: "agent@example.com",
+      return_to: null,
       used_at: null,
       expires_at: new Date(Date.now() + 60_000).toISOString()
     });

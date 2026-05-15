@@ -104,11 +104,14 @@ export function AgentLanding({
       </section>
 
       <div className="fixed inset-x-0 bottom-0 z-10 border-t border-warm-border bg-[#FAFAF7]/90 px-5 py-4 backdrop-blur safe-bottom">
-        <div className="phone-shell">
+        <div className="phone-shell space-y-3">
           <LinkButton className="w-full gap-2" href={`/${agent.slug}/intake`}>
             Find your next home
             <ArrowRight size={18} />
           </LinkButton>
+          <a className="block text-center text-sm font-semibold text-warm-muted" href={`/${agent.slug}/seller`}>
+            Selling instead?
+          </a>
         </div>
       </div>
     </div>

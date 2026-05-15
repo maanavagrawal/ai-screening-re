@@ -2,6 +2,338 @@
 
 ## Priority 1
 
+- [x] Add role-aware root entry and returning-agent login resume
+  - Goal: the base domain should route visitors by intent instead of forcing every logged-out agent back through setup.
+  - Design review result: 4/10 -> 9/10 after specifying information architecture, states, emotional journey, anti-slop rules, responsive/a11y behavior, auth routing, and verification. Mockups were not generated because the gstack designer binary is not installed in this workspace.
+  - Engineering review result: FULL_REVIEW, clean after plan fixes. Scope is accepted with guardrails: no marketplace, no full seller product, no second auth system, no second dashboard. Key fixes added: stored safe `return_to`, authenticated-agent lookup separate from dev preview fallback, explicit seller lead side-effect path, exact-submit agent resolution, and full test coverage diagram.
+  - Implementation result: `/` now presents buyer, seller, and agent paths; buyer/seller exact-link resolution routes to `/{agentSlug}` and `/{agentSlug}/seller`; seller inquiries persist as seller-tagged leads; returning-agent magic links resolve to safe dashboard returns, completed-agent dashboard, saved setup step, or welcome setup without resetting drafts.
+  - Verification: `npm run test`, `npm run typecheck`, `npm run lint`, targeted desktop Playwright setup/seller/dashboard flow, `npm run e2e`, `npm run build`, plus gstack browse smoke check on a clean local dev server.
+  - Acceptance:
+    - `/` presents clear paths for prospective buyers, prospective sellers, and agents.
+    - Buyer/seller entry does not create cross-agent marketplace behavior; it asks for an agent link/code or respects direct `/{agentSlug}` links.
+    - Agent sign-in supports returning agents and new setup from one magic-link flow.
+    - Magic-link requests do not reset an existing setup draft to `welcome`.
+    - After magic-link verification, existing agents land on `/dashboard/leads`; incomplete setups resume at `setup_drafts.current_step`.
+    - `/dashboard/*` logged-out redirects preserve a safe `return_to` back to the requested dashboard route.
+    - Tests cover existing-agent login, draft resume, root role routing, and direct buyer slug behavior.
+  - What already exists:
+    - `/` is currently an agent setup landing page with the warm cream/terracotta palette, serif headline, `LinkButton`, and buyer-page preview.
+    - `/signup` has the magic-link form, but its copy is setup-only and the success state says "Continue setup" even for returning agents.
+    - `/{agentSlug}` is the buyer-facing island and must stay the primary shared buyer link.
+    - `/dashboard/*` already auth-gates on `getCurrentAgent()`, but redirects logged-out agents to `/signup` without a return target.
+    - `setup_drafts.current_step` already contains the resume point, but magic-link creation overwrites it to `welcome`.
+    - No `DESIGN.md` exists, so use the existing token vocabulary in `app/globals.css` and established component shapes instead of inventing a new brand system.
+  - Information architecture:
+    - Classifier: hybrid. `/` is a marketing-light role router; dashboard/setup remain app UI; buyer/seller agent pages are functional lead capture.
+    - First screen hierarchy:
+      - First: the product identity and question, "What are you here to do?"
+      - Second: three explicit choices, "Buy a home", "Sell a home", "I am an agent".
+      - Third: the role-specific panel that appears after selection.
+    - Screen structure:
+      ```text
+      /
+      +-- Header: small brand, signed-in agent shortcut when present
+      +-- Main question: "What are you here to do?"
+      +-- Role selector:
+          +-- Buy a home -> exact agent link/code input -> /{agentSlug}
+          +-- Sell a home -> exact agent link/code input -> /{agentSlug}/seller
+          +-- I am an agent -> email magic-link panel -> dashboard or setup resume
+      +-- Secondary links: /signup and /dashboard only after agent intent is selected
+      ```
+    - Navigation rules:
+      - Do not auto-redirect signed-in agents from `/`; buyers and sellers still need the base link. Show a compact signed-in banner with "Continue to dashboard" instead.
+      - Do not add agent search, recommendations, featured agents, or a marketplace. Buyer/seller entry accepts only an exact slug, full link, or known code.
+      - Direct `/{agentSlug}` remains buyer-first. Add a small "Selling instead?" path to `/{agentSlug}/seller` only after the seller route exists.
+  - Root page interaction spec:
+    - Default state shows one centered composition, not a dashboard: brand, H1, short sentence, three large role buttons, no preview card competing for attention.
+    - Role buttons are cards because the card is the interaction. Each has a lucide icon, a 2-4 word title, and one short clarifier. Avoid icon-in-colored-circle decoration.
+    - Buyer panel:
+      - Visible label: "Agent link or code".
+      - Accepts `maya`, `/maya`, `https://domain.com/maya`, or an agent code if implemented.
+      - Exact match shows "Continue to Maya" and navigates to `/{slug}`.
+      - Error says "We could not find that agent link. Check the spelling or ask your agent."
+    - Seller panel:
+      - Same exact-match control as buyer.
+      - Exact match navigates to `/{slug}/seller`.
+      - Seller intake collects name, email, phone, property address or neighborhood, timeframe, and free-text notes. Optional email-or-phone contact can be reconsidered later, but v1 keeps both fields to reuse the existing lead schema without nullable-contact churn.
+      - Store seller submissions as leads with `source: "seller_entry"` and `preferences.intent: "seller"`; do not run buyer match-reason generation or buyer brief generation for seller leads.
+      - Dashboard rows/panels should badge seller leads and show seller-specific brief fields instead of forcing buyer preference language.
+    - Agent panel:
+      - Copy: "Sign in or create your agent link."
+      - Email label stays visible above the field.
+      - Success copy: "Check your email. We will open your dashboard or resume setup from where you left off."
+      - Dev-only continue button copy should be neutral: "Continue" rather than "Continue setup".
+  - Auth and resume plan:
+    - Add a small resolver, for example `resolveAgentAccessDestination({ userId, returnTo })`.
+    - Destination order:
+      ```text
+      safe return_to + completed agent -> return_to
+      completed agent -> /dashboard/leads
+      incomplete setup draft -> /setup/{current_step}
+      no draft -> /setup/welcome
+      ```
+    - Safe `return_to` allowlist: same-origin relative paths only, limited to `/dashboard`, `/dashboard/leads`, `/dashboard/listings`, `/dashboard/distribution`, and `/dashboard/settings`.
+    - Persist sanitized `return_to` on `agent_magic_links` rather than trusting a query string on `/auth/verify`.
+    - Replace magic-link draft writes with an idempotent draft initializer. Sending a magic link may create a welcome draft for a brand-new user, but must never move an existing draft backward.
+    - Magic-link POST stores or encodes a safe `return_to` so verification can honor dashboard deep links.
+    - `/auth/verify` POST consumes the token, sets the agent session, then redirects through the resolver instead of always `/setup/welcome`.
+    - `/dashboard/*` logged-out redirects become `/signup?return_to=<safe-dashboard-path>`.
+    - `/setup/*` logged-out redirects may remain setup-oriented, but should preserve a safe setup step when useful.
+  - Interaction state table:
+    ```text
+    Feature                  | Loading                         | Empty                         | Error                                      | Success                                  | Partial
+    -------------------------|---------------------------------|-------------------------------|--------------------------------------------|------------------------------------------|-------------------------------
+    Role selector            | None; server-rendered choices   | Show all three choices        | N/A                                        | Selected role panel opens inline         | Signed-in banner can coexist
+    Agent link/code resolve  | Button says "Checking..."       | Disabled until value entered  | Exact, plain-language not-found message    | CTA changes to named agent destination   | Parsed URL normalizes to slug
+    Agent magic-link send    | Button says "Sending..."        | Disabled until valid email    | Config/auth error above CTA                | Neutral "Check your email" confirmation  | Dev link button says "Continue"
+    Magic-link verify page   | Button posts once, no spinner   | Missing token -> signup       | Expired token -> fresh-link CTA            | Destination resolver redirects correctly | Email prefetch GET never consumes
+    Seller intake            | Submit button says "Saving..."  | Required fields visible       | Inline validation, keep user input         | Warm confirmation with agent next step   | Both contact fields required in v1
+    Dashboard return_to      | N/A                             | N/A                           | Unsafe path ignored and falls back safely  | Deep link restores requested section     | Unknown section normalizes to leads
+    ```
+    Engineering override: seller v1 requires both phone and email because the current `leads` table and dashboard assume non-null contact fields. Revisit optional-contact seller capture only with a nullable-contact migration and null-safe dashboard/email templates.
+  - User journey storyboard:
+    ```text
+    Step | User does                         | User feels                         | Plan response
+    -----|-----------------------------------|------------------------------------|--------------------------------------------
+    1    | Lands on base link                | Unsure if this is for them         | One question and three unmistakable choices
+    2    | Picks buyer or seller             | Wants their agent, not a directory | Exact link/code input, no marketplace browse
+    3    | Enters agent link                 | Worried they typed it wrong        | Named confirmation or recoverable error
+    4    | Agent signs in after logout       | Annoyed by repeat setup friction   | Magic link returns to dashboard or draft step
+    5    | Incomplete agent resumes setup    | Relieved work was saved            | Setup opens saved current step
+    6    | Seller submits interest           | Wants a simple next step           | Confirmation says agent received the note
+    ```
+  - Anti-slop and visual rules:
+    - No generic SaaS feature grid. The three role choices are functional controls, not marketing features.
+    - No purple/blue gradients, decorative blobs, stock real estate imagery, emoji, centered-everything layouts, or decorative icon circles.
+    - Keep the current warm palette: `--background`, `--foreground`, `--muted`, `--border`, `--agent-accent`, and `--agent-accent-soft`.
+    - Use the existing serif display treatment for the H1 and the existing sans/UI treatment for labels and controls.
+    - Cards stay at or below the existing rounded style unless the current component requires otherwise; do not nest cards.
+    - Copy must be task language, not product hype. Every sentence should answer what the visitor can do next.
+  - Responsive and accessibility requirements:
+    - Desktop: max-width composition, three role choices in one row, role panel below or alongside without causing layout jump.
+    - Mobile: role choices stack, each at least 56px tall, role panel immediately follows the selected choice, CTA remains visible without horizontal scroll.
+    - Tablet: two-column only if the selected panel has enough width for labels and validation text; otherwise use stacked layout.
+    - Keyboard: Tab order is brand/skip if present -> role choices -> active panel field -> CTA -> secondary links. Enter submits active forms.
+    - Screen readers: use one H1, fieldsets/legends for role selection, visible labels, `aria-live="polite"` for resolve and auth errors, and clear focus after role selection.
+    - Contrast: body text >= 4.5:1; placeholder text is never the only label; disabled CTAs remain visually disabled but legible.
+  - Not in scope:
+    - Public agent marketplace or search, because that breaks the agent-owned island model.
+    - Seller valuation, CMA generation, listing agreement workflow, or seller dashboard, because the immediate need is routing and lead capture.
+    - Custom domains, subdomains, password auth, billing, CRM migration, and MLS/IDX feed connection.
+    - Redesigning setup, dashboard, buyer intake, or match cards beyond copy/routing changes required for this flow.
+  - Implementation sequence:
+    - Add focused root role UI, likely a client component under `components/root/`, while keeping `app/page.tsx` server-rendered for signed-in-agent context.
+    - Add exact agent-link parsing/resolution primitive and API. It should normalize slug/full URL input and return only the matched agent needed for confirmation.
+    - Add `/{agentSlug}/seller` plus a small seller-intake component and POST route that creates a seller-tagged lead through an explicit seller side-effect path.
+    - Add auth destination resolver and safe `return_to` parsing tests.
+    - Add `return_to` to the `agent_magic_links` Railway schema and Supabase compatibility migration; legacy rows without it fall back through the destination resolver.
+    - Update magic-link creation to initialize drafts without resetting them.
+    - Update magic-link verification, `/signup`, setup redirects, and dashboard redirects to use the resolver and safe return target.
+    - Update dashboard lead display just enough to make seller leads legible.
+    - Update copy in email subject/body and verify confirmation page from setup-only language to neutral sign-in/resume language.
+  - Engineering scope challenge:
+    - Existing code already solves most sub-problems:
+      - Agent lookup: `resolveAgentBySlug()` and `resolveAgent()` should be reused. Add a parser in front; do not build an agent search service.
+      - Buyer lead creation: `createLead()` already persists leads, events, cookies, and dashboard data. Reuse the table shape, but split buyer-only side effects from seller capture.
+      - Auth/session: `setAgentSession()`, `getCurrentUserId()`, `getCurrentAgent()`, `setup_drafts`, and magic-link rows already exist. Add a destination resolver instead of creating a new login flow.
+      - Dashboard display: `DashboardShell` and `getDashboardLeads()` already list leads. Add seller badges/labels, not a seller dashboard.
+    - Minimum complete change:
+      - Root intent router.
+      - Exact agent-link resolver.
+      - Seller v1 inquiry route using the existing leads table with explicit `intent: "seller"`.
+      - Returning-agent login resolver with persisted safe return target.
+      - Focused dashboard label support for seller leads.
+    - Deferred without blocking:
+      - Seller valuation/CMA, optional-contact nullable schema, seller-specific AI brief, marketplace/search, and agent code generation.
+    - Complexity smell:
+      - This will touch more than 8 files, but that is appropriate because the task crosses root UI, auth routing, data capture, dashboard display, migrations, and tests. Keep it engineered enough by adding shared helpers instead of ad hoc logic in route handlers.
+    - Search check:
+      - [Layer 1] Use the Next.js App Router redirect/cookie patterns already present in this repo.
+      - [Layer 1] Keep route handlers boring: parse request, call shared helper, return `NextResponse`. Do not introduce middleware or a client-only auth router.
+    - Distribution check:
+      - No new artifact type is introduced. The existing Next.js app and Railway migration path are the distribution surface.
+  - Architecture and data flow:
+    ```text
+    Root role entry
+    /
+    +-- app/page.tsx (server)
+        +-- getAuthenticatedAgentForBanner()
+        +-- RootRoleEntry (client)
+            +-- buyer selected
+            |   +-- parseAgentLinkInput(value)
+            |   +-- POST /api/agents/resolve-link
+            |   +-- success -> router.push("/{slug}")
+            |   +-- not found -> inline recoverable error
+            +-- seller selected
+            |   +-- parseAgentLinkInput(value)
+            |   +-- POST /api/agents/resolve-link
+            |   +-- success -> router.push("/{slug}/seller")
+            +-- agent selected
+                +-- SignupForm(returnTo?)
+                +-- POST /api/auth/magic-link
+    ```
+    ```text
+    Returning agent auth
+    /dashboard/listings unauthenticated
+    +-- redirect("/signup?return_to=/dashboard/listings")
+        +-- POST /api/auth/magic-link
+            +-- sanitizeReturnTo()
+            +-- createAgentMagicLink({ email, returnTo })
+            +-- ensureSetupDraftInitialized(userId, email)
+            +-- email / devLink
+        +-- GET /auth/verify?token=... renders confirmation only
+        +-- POST /auth/verify
+            +-- consumeAgentMagicLink()
+            +-- setAgentSession()
+            +-- resolveAgentAccessDestination(userId, storedReturnTo)
+                +-- completed agent + safe returnTo -> returnTo
+                +-- completed agent -> /dashboard/leads
+                +-- setup draft -> /setup/{current_step}
+                +-- no draft -> /setup/welcome
+    ```
+    ```text
+    Seller lead capture
+    /{agentSlug}/seller
+    +-- resolveAgentBySlug(agentSlug)
+    +-- SellerInquiryForm
+        +-- POST /api/seller-leads
+            +-- validate agent_slug, session_id, name, phone, email, property, timeframe, notes
+            +-- createLead({ kind: "seller", preferences.intent: "seller", source: "seller_entry" })
+                +-- insert leads row
+                +-- log seller_inquiry_created event
+                +-- skip buyer match reasons
+                +-- skip buyer brief prompt
+                +-- compute neutral/browsing temperature or set fixed seller status
+            +-- set session and lead cookies
+            +-- return confirmation
+    ```
+  - Engineering decisions locked:
+    - Add `lib/auth/destinations.ts` for `sanitizeReturnTo()` and `resolveAgentAccessDestination()`. Keep all return-target logic in one file.
+    - Add an authenticated-agent helper for root/dashboard auth checks that does not fall back to `getFirstDevAgent()`. `getCurrentAgent()` currently has a dev preview fallback; do not use that fallback to decide whether someone is signed in.
+    - Add `return_to text` to `agent_magic_links` in `scripts/railway-migrate.mjs` and Supabase compatibility migration. Store only sanitized relative paths.
+    - Add `parseAgentLinkInput()` in a shared helper. It must reject reserved paths such as `api`, `auth`, `dashboard`, `setup`, `signup`, and `agents`.
+    - Add a discriminated lead intent path: buyer leads keep existing brief/match side effects; seller leads skip buyer AI and match-reason generation.
+    - Keep seller v1 in `leads` with `preferences.intent = "seller"` and both contact fields required. Do not add a parallel seller table in this task.
+    - Keep `/api/agents/resolve-link` exact-submit only. Do not query on every keystroke and do not return lists of agents.
+  - Code quality constraints:
+    - No duplicate return-target parsing in `/signup`, `/dashboard`, `/auth/verify`, and `/api/auth/magic-link`.
+    - No ad hoc URL parsing inside React components. Components call `parseAgentLinkInput()` through the resolve API.
+    - Avoid boolean flags like `skipAi?: true` leaking everywhere. Prefer `createLead({ kind: "buyer" | "seller", ... })` or a small `createSellerLead()` wrapper.
+    - Keep route handlers thin: validate with zod, call helper, return response. Put state-machine logic in pure helpers with unit tests.
+    - Update type definitions intentionally: add seller intent/preference fields to `Preferences` instead of relying on `Record<string, unknown>`.
+    - Add short ASCII comments only where they prevent mistakes: the destination resolver and lead side-effect split are the two places that deserve comments.
+  - Test coverage diagram:
+    ```text
+    CODE PATHS                                                   USER FLOWS
+    [+] lib/root/agent-link.ts                                    [+] Base link intent routing
+      +-- [GAP -> UNIT] slug, /slug, full URL parse                 +-- [GAP -> E2E] buyer role resolves Maya -> /maya
+      +-- [GAP -> UNIT] reserved path rejected                      +-- [GAP -> E2E] seller role resolves Maya -> /maya/seller
+      +-- [GAP -> UNIT] malformed URL rejected                      +-- [GAP -> E2E] unknown link shows recoverable error
+
+    [+] app/api/agents/resolve-link/route.ts                      [+] Returning agent auth
+      +-- [GAP -> UNIT] known slug returns minimal agent             +-- [GAP -> E2E] completed agent -> /dashboard/leads
+      +-- [GAP -> UNIT] unknown slug returns 404                     +-- [GAP -> E2E] dashboard return_to survives signup + verify
+      +-- [GAP -> UNIT] reserved slug returns 404                    +-- [GAP -> E2E] incomplete draft resumes saved step
+
+    [+] lib/auth/destinations.ts                                  [+] Seller inquiry
+      +-- [GAP -> UNIT] safe dashboard return targets                +-- [GAP -> E2E] seller form creates seller-tagged lead
+      +-- [GAP -> UNIT] unsafe/external targets rejected             +-- [GAP -> E2E] dashboard shows seller badge/fields
+      +-- [GAP -> UNIT] completed agent + return_to                  +-- [GAP] rapid double submit does not create duplicate UI confusion
+      +-- [GAP -> UNIT] completed agent no return_to
+      +-- [GAP -> UNIT] incomplete setup draft
+      +-- [GAP -> UNIT] no draft
+
+    [+] app/api/auth/magic-link/route.ts
+      +-- [GAP -> UNIT] creates draft only when none exists
+      +-- [GAP -> UNIT] existing draft step is not overwritten
+      +-- [GAP -> UNIT] stores sanitized return_to on magic link
+      +-- [GAP -> UNIT] dev redirect uses destination resolver
+
+    [+] app/auth/verify/route.ts
+      +-- [EXISTING ★★★] GET does not consume token
+      +-- [GAP -> UNIT] POST redirects through destination resolver
+      +-- [GAP -> UNIT] expired token keeps fresh-link behavior
+
+    [+] seller lead side effects
+      +-- [GAP -> UNIT] seller lead inserts preferences.intent/source
+      +-- [GAP -> UNIT] seller lead skips match reasons
+      +-- [GAP -> UNIT] buyer lead still generates match reasons
+      +-- [GAP -> UNIT] dashboard search includes seller property/notes
+
+    COVERAGE BEFORE BUILD: 1/28 known paths covered by existing tests.
+    REQUIRED COVERAGE TO SHIP: 28/28 planned paths covered, including 7 E2E flows.
+    ```
+  - Failure modes:
+    ```text
+    Codepath                     | Production failure                              | Test? | Handling in plan
+    -----------------------------|-------------------------------------------------|-------|------------------
+    return_to                    | External URL/open redirect                      | yes   | sanitize allowlist, fallback dashboard
+    magic-link draft init        | Existing draft reset to welcome                 | yes   | initializer only creates missing draft
+    magic-link verify            | Token consumed by GET prefetch                  | yes   | existing GET confirmation stays
+    agent resolve API            | User pastes /dashboard or malformed URL         | yes   | reserved-path rejection + inline error
+    root signed-in banner        | Dev fallback shows first pilot as signed-in     | yes   | authenticated-agent helper, no fallback
+    seller lead creation         | Buyer AI tries to rank listings for seller      | yes   | discriminated lead side effects
+    seller submit                | Duplicate POST on double click                  | yes   | pending state and idempotent UI; no second visible success
+    dashboard seller display     | Seller row looks like buyer preference mismatch | yes   | seller badge and seller-specific panel fields
+    ```
+    Critical silent gaps after this review: 0, assuming the listed tests are implemented with the feature.
+  - Performance review:
+    - Root page must not fetch listings, leads, match reasons, dashboard summaries, or distribution templates.
+    - Agent link resolution is submit-only. No live typeahead and no marketplace-style search.
+    - `/api/agents/resolve-link` should return only `{ slug, name, market }`, not the full agent profile or listings.
+    - Seller lead creation must avoid buyer match-reason AI calls. It should be one DB insert plus event logging.
+    - Dashboard already has per-lead event/showing request fetches; do not broaden that in this task. If seller lead volume grows, batch dashboard enrichment later.
+  - Worktree parallelization strategy:
+    - Dependency table:
+      ```text
+      Step                         | Modules touched                         | Depends on
+      -----------------------------|-----------------------------------------|------------
+      Auth destination resolver    | lib/auth, app/api/auth, app/auth, db    | -
+      Root role UI + resolve API   | app, components/root, app/api/agents    | agent-link parser
+      Seller inquiry path          | app/[agentSlug]/seller, app/api, lib    | lead intent split
+      Dashboard seller labels      | components/dashboard, lib/dashboard     | seller inquiry path
+      E2E/browser QA               | tests/e2e                               | all feature lanes
+      ```
+    - Parallel lanes:
+      - Lane A: auth destination resolver -> magic-link verify updates.
+      - Lane B: root role UI -> exact agent resolve API.
+      - Lane C: lead side-effect split -> seller inquiry route -> dashboard seller labels.
+      - Lane D: tests can start as unit scaffolds after helper signatures exist, then finish after lanes A-C merge.
+    - Execution order:
+      - Build helper signatures first in one branch or short initial commit.
+      - Lane A and Lane B can run in parallel.
+      - Lane C can run in parallel after the lead-intent helper signature is agreed.
+      - E2E/browser QA waits until A-C are merged.
+    - Conflict flags:
+      - Lane A and Lane B may both touch `/signup` copy/form behavior. Keep signup return-target props in Lane A and visual role selection in Lane B.
+      - Lane C and dashboard work both touch lead display types. Merge lead type changes before dashboard UI polish.
+  - Verification plan:
+    - Unit tests:
+      - `lib/root/agent-link.test.ts` covers slug, slash slug, full URL, malformed URL, and reserved paths.
+      - `lib/auth/destinations.test.ts` covers safe return targets and destination resolution for completed, incomplete, and new agents.
+      - Safe `return_to` accepts known dashboard paths and rejects external, protocol-relative, unknown, and setup-reset paths.
+      - Destination resolver sends completed agents to dashboard, incomplete agents to saved draft step, new agents to welcome.
+      - Magic-link POST does not overwrite an existing `setup_drafts.current_step`.
+      - Magic-link POST stores sanitized `return_to`; verify POST uses stored return target.
+      - Agent link/code parser handles slug, `/slug`, and full URL.
+      - Seller lead creation tags `preferences.intent = "seller"` and skips buyer brief/match-reason generation.
+      - Buyer lead creation still runs existing buyer brief/match-reason behavior.
+      - Root signed-in banner uses authenticated user state, not the dev first-agent fallback.
+    - E2E tests:
+      - `/` role selector opens buyer panel and resolves a seeded agent to `/{slug}`.
+      - `/` role selector opens seller panel and resolves a seeded agent to `/{slug}/seller`.
+      - Unknown buyer/seller agent link shows the inline recovery error without navigating.
+      - `/` agent panel sends magic link and local dev continue resumes an incomplete draft.
+      - Existing completed agent logging in lands on `/dashboard/leads`.
+      - Logged-out `/dashboard/listings` redirects through signup and returns to listings after verification.
+      - Direct `/maya` buyer flow still works.
+      - Seller inquiry appears in dashboard with a seller badge and does not show buyer match language.
+    - Browser QA:
+      - Verify desktop and mobile root layouts in the in-app browser.
+      - Click buyer, seller, and agent paths live.
+      - Confirm no console errors and no overlapping text at narrow mobile width.
+      - Confirm the base link no longer makes a logged-out returning agent restart setup.
+
 - [x] Make buyer intake Continue taps instant
   - Goal: structured intake screens should change immediately after Continue, without waiting on a server round trip.
   - Acceptance:
@@ -192,6 +524,10 @@
 
 ## Review
 
+- 2026-05-15: Ran `/plan-eng-review` on the role-aware root/returning-agent plan. Locked the architecture to reuse existing agent lookup, leads, setup drafts, and magic-link primitives; added safe stored `return_to`, authenticated-agent lookup without dev preview fallback, seller lead side-effect split, test coverage diagram, failure modes, performance constraints, and parallel worktree lanes.
+- 2026-05-15: Ran text-only `/plan-design-review` for role-aware root entry and returning-agent login resume. Designer/browser binaries were unavailable, so no mockups were generated. The plan now specifies IA, states, journey, anti-slop constraints, responsive/a11y requirements, auth routing, seller-lead handling, and verification.
+- 2026-05-15: Implemented the role-aware base link and returning-agent login resume. Added exact buyer/seller agent-link resolution, seller inquiry capture and dashboard labeling, stored safe magic-link `return_to`, non-resetting draft initialization, and authenticated-agent dashboard routing. Verified `npm run test`, `npm run typecheck`, `npm run lint`, targeted desktop Playwright flow, `npm run e2e`, `npm run build`, and gstack browse smoke on `http://127.0.0.1:3111/`.
+- 2026-05-15: Re-ran user-side browser QA on the role-aware base link. Fixed the embedded agent form so it no longer changes `/` to `/signup` after send, and fixed mobile role selection so the active buyer/seller/agent panel appears directly under the selected card with only one form in the DOM. Re-verified buyer routing, seller inquiry submit/confirmation, agent setup entry, mobile layout, console errors, `npm run typecheck`, `npm run lint`, and focused root Playwright coverage on desktop/mobile.
 - 2026-05-12: Initialized autonomous Codex repo scaffolding with task tracking and command wrappers.
 - 2026-05-12: Verified `./scripts/setup.sh`, `./scripts/test.sh`, and `./scripts/e2e.sh` handle the current empty repo state cleanly.
 - 2026-05-12: Clarified local live-browser work versus Codex Cloud autonomous test/PR work in `AGENTS.md`.
@@ -213,3 +549,16 @@
 - 2026-05-14: Fixed repeated free-text intake and slow structured taps without removing the product's AI quality. Free-text extraction still uses AI; next-question advancement now uses the deterministic confidence/skip logic by default to avoid per-tap model latency, with an opt-in `ENABLE_AI_INTAKE_NEXT=1` path guarded against repeated answered questions. Verified focused AI helper regression, typecheck, lint, all unit tests, buyer e2e on desktop/mobile, and production build.
 - 2026-05-14: Removed stock property imagery from buyer match cards. Cards now show only agent-provided non-stock MP4 media; known Unsplash/Pexels stock/demo media is suppressed and no-media cards render a neutral branded panel. Documented authorized MLS/IDX/RESO as the future real-media path. Verified focused listing-card media tests, listing privacy tests, typecheck, lint, buyer e2e on desktop/mobile, and production build.
 - 2026-05-14: Fixed structured buyer-intake Continue latency by moving next-question selection into a shared client-safe deterministic helper. The server `/api/intake/next` contract remains for AI/server use, but ordinary structured taps no longer wait on it. Verified focused unit tests, a targeted Playwright no-network latency regression, main buyer e2e, typecheck, lint, and production build. The Codex in-app browser control channel timed out after hot reload, so live visible verification should use the freshly restarted dev server.
+
+## GSTACK REVIEW REPORT
+
+| Review | Trigger | Why | Runs | Status | Findings |
+|--------|---------|-----|------|--------|----------|
+| CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | not run | Not requested for this plan |
+| Codex Review | `/codex review` | Independent 2nd opinion | 0 | not run | No implementation diff yet |
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | clean | FULL_REVIEW, 18 issues/gaps incorporated, 0 critical gaps, 0 unresolved |
+| Design Review | `/plan-design-review` | UI/UX gaps | 1 | clean | score: 4/10 -> 9/10, 9 decisions added, 0 unresolved; mockups skipped because designer binary unavailable |
+| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | not run | Not applicable yet |
+
+- UNRESOLVED: 0 design decisions, 0 engineering decisions. Visual mockups remain unavailable until the gstack designer binary is installed.
+- VERDICT: IMPLEMENTED + VERIFIED. The plan has shipped locally with automated desktop/mobile coverage and a clean browser smoke pass. Run `/ship` when ready to publish the branch.

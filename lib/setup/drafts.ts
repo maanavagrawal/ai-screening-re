@@ -22,6 +22,20 @@ export async function getSetupDraft(userId: string): Promise<SetupDraft | null> 
   return (data as SetupDraft | null) ?? null;
 }
 
+export async function ensureSetupDraftInitialized(input: {
+  userId: string;
+  email?: string | null;
+}): Promise<SetupDraft> {
+  const existing = await getSetupDraft(input.userId);
+  if (existing) return existing;
+
+  return saveSetupDraft({
+    userId: input.userId,
+    currentStep: "welcome",
+    data: { userId: input.userId, email: input.email ?? undefined }
+  });
+}
+
 export async function saveSetupDraft(input: {
   userId: string;
   data: Partial<AgentSetupDraftData>;

@@ -75,6 +75,13 @@ export type EventRecord = {
 };
 
 export type Preferences = {
+  intent?: "buyer" | "seller";
+  seller?: {
+    property_address?: string | null;
+    neighborhood?: string | null;
+    timeframe?: "asap" | "1_3_months" | "3_6_months" | "6_plus_months" | "just_curious" | "custom";
+    notes?: string | null;
+  };
   timeline?: {
     preset: "30_days" | "60_days" | "90_days" | "6_months" | "just_exploring" | "custom";
     target_date?: string | null;

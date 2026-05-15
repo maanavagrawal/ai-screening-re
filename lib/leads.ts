@@ -11,6 +11,7 @@ import { generateBrief, generateMatchReasons } from "@/lib/ai/anthropic";
 import { computeTemperature } from "@/lib/compute-temperature";
 import { hasPostgresEnv, query } from "@/lib/db/postgres";
 import { getEventsForLead } from "@/lib/events";
+import { isSellerLead, sellerDetails } from "@/lib/lead-intent";
 import { getListingsForAgent } from "@/lib/listings";
 import { rankListings } from "@/lib/match-score";
 import { getServiceSupabase } from "@/lib/supabase/service";
@@ -77,6 +78,7 @@ export async function getLeadsForAgent(agentId: string): Promise<Lead[]> {
 export async function createLead(input: {
   agent: Agent;
   sessionId: string;
+  kind?: "buyer" | "seller";
   phone: string;
   email: string;
   preferences: Preferences;
@@ -85,6 +87,7 @@ export async function createLead(input: {
   firstName?: string | null;
 }): Promise<Lead> {
   const tier = input.preferences.tier_hint === "browsing" ? "browsing" : "captured";
+  const kind = input.kind ?? (input.preferences.intent === "seller" ? "seller" : "buyer");
   if (hasPostgresEnv()) {
     const { rows } = (await query<Lead>(
       `insert into leads (
@@ -111,8 +114,12 @@ export async function createLead(input: {
       "update events set lead_id = $1, agent_id = $2 where session_id = $3 and agent_id = $2 and lead_id is null",
       [lead.id, input.agent.id, input.sessionId]
     );
-    await runLeadSideEffects(input.agent, lead);
-    await recomputeLeadTemperature(lead.id);
+    if (kind === "seller") {
+      await runSellerLeadSideEffects(input.agent, lead);
+    } else {
+      await runLeadSideEffects(input.agent, lead);
+      await recomputeLeadTemperature(lead.id);
+    }
     return lead;
   }
 
@@ -130,8 +137,12 @@ export async function createLead(input: {
       preapprovalUrl: input.preapprovalUrl,
       tier
     });
-    await runLeadSideEffects(input.agent, lead);
-    await recomputeLeadTemperature(lead.id);
+    if (kind === "seller") {
+      await runSellerLeadSideEffects(input.agent, lead);
+    } else {
+      await runLeadSideEffects(input.agent, lead);
+      await recomputeLeadTemperature(lead.id);
+    }
     return lead;
   }
 
@@ -162,8 +173,12 @@ export async function createLead(input: {
     .eq("agent_id", input.agent.id)
     .is("lead_id", null);
 
-  await runLeadSideEffects(input.agent, lead);
-  await recomputeLeadTemperature(lead.id);
+  if (kind === "seller") {
+    await runSellerLeadSideEffects(input.agent, lead);
+  } else {
+    await runLeadSideEffects(input.agent, lead);
+    await recomputeLeadTemperature(lead.id);
+  }
   return lead;
 }
 
@@ -192,6 +207,11 @@ export async function updateLead(leadId: string, patch: Partial<Lead>): Promise<
 }
 
 export async function runLeadSideEffects(agent: Agent, lead: Lead) {
+  if (isSellerLead(lead)) {
+    await runSellerLeadSideEffects(agent, lead);
+    return;
+  }
+
   const listings = await getListingsForAgent(agent.id);
   const ranked = rankListings(listings, lead.preferences).map((item) => item.listing);
   const events = await getEventsForLead(lead);
@@ -245,9 +265,54 @@ export async function runLeadSideEffects(agent: Agent, lead: Lead) {
   );
 }
 
+export async function runSellerLeadSideEffects(agent: Agent, lead: Lead) {
+  const brief = sellerLeadBrief(agent, lead);
+
+  if (hasPostgresEnv()) {
+    await query(
+      `update leads
+       set brief = $1,
+           temperature = 'warm',
+           temperature_score = 2,
+           temperature_reasons = $2
+       where id = $3`,
+      [JSON.stringify(brief), ["Seller inquiry"], lead.id]
+    );
+    return;
+  }
+
+  const supabase = getServiceSupabase();
+  if (!supabase) {
+    updateDevLead(lead.id, {
+      brief,
+      temperature: "warm",
+      temperature_score: 2,
+      temperature_reasons: ["Seller inquiry"]
+    });
+    return;
+  }
+
+  await supabase
+    .from("leads")
+    .update({
+      brief,
+      temperature: "warm",
+      temperature_score: 2,
+      temperature_reasons: ["Seller inquiry"]
+    })
+    .eq("id", lead.id);
+}
+
 export async function recomputeLeadTemperature(leadId: string): Promise<Lead | null> {
   const lead = await findLeadById(leadId);
   if (!lead) return null;
+  if (isSellerLead(lead)) {
+    return updateLead(lead.id, {
+      temperature: "warm",
+      temperature_score: 2,
+      temperature_reasons: ["Seller inquiry"]
+    });
+  }
   const events = await getEventsForLead(lead);
   const result = computeTemperature(lead, events);
   return updateLead(lead.id, {
@@ -255,6 +320,24 @@ export async function recomputeLeadTemperature(leadId: string): Promise<Lead | n
     temperature_score: result.score,
     temperature_reasons: result.reasons
   });
+}
+
+function sellerLeadBrief(agent: Agent, lead: Lead) {
+  const details = sellerDetails(lead.preferences);
+  const location = details?.property_address || details?.neighborhood || agent.market;
+  const timeframe = details?.timeframe ? details.timeframe.replaceAll("_", " ") : "timing not specified";
+  const name = lead.first_name || "Seller";
+
+  return {
+    one_line_summary: `${name} may sell in ${location}`.slice(0, 120),
+    why_serious: [
+      `Asked ${agent.name} about selling`,
+      `Timeline: ${timeframe}`
+    ],
+    watch_outs: details?.notes ? [`Notes: ${details.notes.slice(0, 120)}`] : ["Confirm property details before advising"],
+    suggested_opener: `Hi ${name}, thanks for reaching out about ${location}. I can help you think through timing, prep, and what a realistic sale could look like.`,
+    priority: "warm"
+  };
 }
 
 export async function getMatchReasonMap(leadId: string) {

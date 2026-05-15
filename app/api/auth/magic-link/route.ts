@@ -2,15 +2,17 @@ import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { parseJsonBody } from "@/lib/api/validation";
+import { resolveAgentAccessDestination, sanitizeReturnTo } from "@/lib/auth/destinations";
 import { getMagicLinkMode } from "@/lib/auth/magic-link-mode";
 import { createAgentMagicLink, devUserIdFromEmail, setAgentSession } from "@/lib/auth/session";
 import { hasPostgresEnv } from "@/lib/db/postgres";
 import { getPublicOriginFromRequest } from "@/lib/public-origin";
-import { saveSetupDraft } from "@/lib/setup/drafts";
+import { ensureSetupDraftInitialized } from "@/lib/setup/drafts";
 import { hasSupabaseEnv } from "@/lib/supabase/service";
 
 const BodySchema = z.object({
-  email: z.string().email()
+  email: z.string().email(),
+  return_to: z.string().optional().nullable()
 });
 
 export async function POST(request: Request) {
@@ -18,6 +20,7 @@ export async function POST(request: Request) {
   if ("response" in parsed) return parsed.response;
 
   const email = parsed.data.email.toLowerCase();
+  const returnTo = sanitizeReturnTo(parsed.data.return_to);
   const origin = getPublicOriginFromRequest(request);
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -49,8 +52,8 @@ export async function POST(request: Request) {
   }
 
   if (mode === "postgres_email" || mode === "postgres_dev_link") {
-    const { userId, token } = await createAgentMagicLink({ email });
-    await saveSetupDraft({ userId, currentStep: "welcome", data: { userId, email } });
+    const { userId, token } = await createAgentMagicLink({ email, returnTo });
+    await ensureSetupDraftInitialized({ userId, email });
     const verifyUrl = `${origin}/auth/verify?token=${encodeURIComponent(token)}`;
 
     if (mode === "postgres_dev_link") {
@@ -67,8 +70,8 @@ export async function POST(request: Request) {
       body: JSON.stringify({
         from: process.env.EMAIL_FROM || "Memoir <onboarding@resend.dev>",
         to: email,
-        subject: "Sign in to your buyer page setup",
-        html: `<p>Click to continue your setup:</p><p><a href="${verifyUrl}">${verifyUrl}</a></p><p>This link expires in 15 minutes.</p>`
+        subject: "Sign in to your agent page",
+        html: `<p>Click to sign in or continue setup:</p><p><a href="${verifyUrl}">${verifyUrl}</a></p><p>This link expires in 15 minutes.</p>`
       })
     });
 
@@ -87,7 +90,7 @@ export async function POST(request: Request) {
     const supabase = createClient(supabaseUrl, supabaseAnonKey);
     const { error } = await supabase.auth.signInWithOtp({
       email,
-      options: { emailRedirectTo: `${origin}/setup/welcome` }
+      options: { emailRedirectTo: `${origin}${returnTo ?? "/setup/welcome"}` }
     });
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
     return NextResponse.json({ ok: true });
@@ -95,6 +98,9 @@ export async function POST(request: Request) {
 
   const userId = devUserIdFromEmail(email);
   await setAgentSession({ userId, email });
-  await saveSetupDraft({ userId, currentStep: "welcome", data: { userId, email } });
-  return NextResponse.json({ ok: true, redirectTo: "/setup/welcome" });
+  await ensureSetupDraftInitialized({ userId, email });
+  return NextResponse.json({
+    ok: true,
+    redirectTo: await resolveAgentAccessDestination({ userId, returnTo })
+  });
 }

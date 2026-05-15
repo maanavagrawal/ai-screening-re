@@ -89,35 +89,44 @@ export async function getCurrentUserId() {
 
 export async function getCurrentAgent(): Promise<Agent | null> {
   const userId = await getCurrentUserId();
-  if (hasPostgresEnv() && userId) {
+  if (userId) return getAgentByUserId(userId);
+  if (!hasSupabaseEnv()) return getFirstDevAgent();
+  return null;
+}
+
+export async function getAgentByUserId(userId: string): Promise<Agent | null> {
+  if (hasPostgresEnv()) {
     const { rows } = (await query<Agent>("select * from agents where user_id = $1 limit 1", [userId])) ?? { rows: [] };
     return rows[0] ?? null;
   }
 
   const supabase = getServiceSupabase();
 
-  if (supabase && userId) {
+  if (supabase) {
     const { data, error } = await supabase.from("agents").select("*").eq("user_id", userId).maybeSingle();
     if (error) throw new Error(`Failed to load current agent: ${error.message}`);
     return (data as Agent | null) ?? null;
   }
 
-  if (userId) return getDevAgentByUserId(userId);
-  if (!hasSupabaseEnv()) return getFirstDevAgent();
-  return null;
+  return getDevAgentByUserId(userId);
+}
+
+export async function getAuthenticatedAgent(): Promise<Agent | null> {
+  const userId = await getCurrentUserId();
+  return userId ? getAgentByUserId(userId) : null;
 }
 
 export function hashToken(token: string) {
   return createHash("sha256").update(token).digest("hex");
 }
 
-export async function createAgentMagicLink(input: { email: string }) {
+export async function createAgentMagicLink(input: { email: string; returnTo?: string | null }) {
   const userId = devUserIdFromEmail(input.email);
   const token = randomBytes(32).toString("base64url");
   await query(
-    `insert into agent_magic_links (user_id, email, token_hash, expires_at)
-     values ($1, $2, $3, now() + interval '15 minutes')`,
-    [userId, input.email.toLowerCase(), hashToken(token)]
+    `insert into agent_magic_links (user_id, email, token_hash, return_to, expires_at)
+     values ($1, $2, $3, $4, now() + interval '15 minutes')`,
+    [userId, input.email.toLowerCase(), hashToken(token), input.returnTo ?? null]
   );
   return { userId, token };
 }
@@ -126,6 +135,7 @@ export type AgentMagicLinkLookup = {
   id: string;
   user_id: string;
   email: string;
+  return_to: string | null;
   used_at: string | null;
   expires_at: string;
 };
@@ -133,7 +143,7 @@ export type AgentMagicLinkLookup = {
 export async function getAgentMagicLink(token: string) {
   const hashed = hashToken(token);
   const { rows } = (await query<AgentMagicLinkLookup>(
-    `select id, user_id, email, used_at, expires_at
+    `select id, user_id, email, return_to, used_at, expires_at
      from agent_magic_links
      where token_hash = $1
      limit 1`,
@@ -148,11 +158,11 @@ export function isAgentMagicLinkUsable(link: AgentMagicLinkLookup | null) {
 
 export async function consumeAgentMagicLink(token: string) {
   const hashed = hashToken(token);
-  const { rows } = (await query<{ id: string; user_id: string; email: string }>(
+  const { rows } = (await query<{ id: string; user_id: string; email: string; return_to: string | null }>(
     `update agent_magic_links
      set used_at = now()
      where token_hash = $1 and used_at is null and expires_at > now()
-     returning id, user_id, email`,
+     returning id, user_id, email, return_to`,
     [hashed]
   )) ?? { rows: [] };
   return rows[0] ?? null;

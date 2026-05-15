@@ -4,7 +4,13 @@ import { useState } from "react";
 import { ArrowRight, Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-export function SignupForm() {
+export function SignupForm({
+  returnTo,
+  embedded = false
+}: {
+  returnTo?: string | null;
+  embedded?: boolean;
+}) {
   const [email, setEmail] = useState("");
   const [sent, setSent] = useState(false);
   const [continueHref, setContinueHref] = useState<string | null>(null);
@@ -18,7 +24,7 @@ export function SignupForm() {
     const response = await fetch("/api/auth/magic-link", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email })
+      body: JSON.stringify({ email, return_to: returnTo ?? null })
     });
     const json = await response.json();
     setLoading(false);
@@ -28,24 +34,25 @@ export function SignupForm() {
     }
     setSent(true);
     setContinueHref(json.devLink ?? json.redirectTo ?? null);
-    if (json.redirectTo || json.devLink) window.history.replaceState(null, "", "/signup");
+    if (!embedded && (json.redirectTo || json.devLink)) window.history.replaceState(null, "", "/signup");
   }
 
   if (sent) {
+    const Heading = embedded ? "h2" : "h1";
     return (
       <div className="space-y-5">
         <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-[var(--agent-accent-soft)] text-[var(--agent-accent)]">
           <Mail size={22} />
         </div>
         <div>
-          <h1 className="font-serif text-5xl leading-none">Check your email</h1>
+          <Heading className="font-serif text-5xl leading-none">Check your email</Heading>
           <p className="mt-4 text-warm-muted">
-            Your setup link is on the way. Use the button only when running a local preview link.
+            Your sign-in link is on the way. We will open your dashboard or resume setup from where you left off.
           </p>
         </div>
         {continueHref ? (
           <Button className="w-full gap-2" onClick={() => (window.location.href = continueHref)}>
-            Continue setup
+            Continue
             <ArrowRight size={18} />
           </Button>
         ) : null}
@@ -53,11 +60,12 @@ export function SignupForm() {
     );
   }
 
+  const Heading = embedded ? "h2" : "h1";
   return (
     <form className="space-y-6" onSubmit={submit}>
       <div>
-        <p className="mb-3 text-sm font-semibold text-[var(--agent-accent)]">Agent setup</p>
-        <h1 className="font-serif text-5xl leading-none">Launch your buyer link</h1>
+        <p className="mb-3 text-sm font-semibold text-[var(--agent-accent)]">Agent access</p>
+        <Heading className="font-serif text-5xl leading-none">Sign in or create your agent link</Heading>
         <p className="mt-4 text-warm-muted">
           Magic link only. No passwords, no CRM migration, no setup maze.
         </p>

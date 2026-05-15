@@ -25,6 +25,8 @@ function searchableLead(lead: Lead) {
     lead.free_text_raw,
     brief?.one_line_summary,
     brief?.suggested_opener,
+    JSON.stringify(lead.preferences),
+    lead.source,
     lead.tier,
     lead.temperature
   ]

@@ -20,6 +20,7 @@ import { agentBaseUrl, humanEvent } from "@/lib/dashboard/client-utils";
 import type { LeadFilter, LeadSort } from "@/lib/dashboard/data";
 import type { DistributionData } from "@/lib/dashboard/distribution";
 import { cn, formatCurrency } from "@/lib/formatting";
+import { isSellerLead, sellerDetails } from "@/lib/lead-intent";
 import type { Agent, DashboardLead, Listing, NotificationPreferences } from "@/lib/types";
 
 type Section = "leads" | "listings" | "distribution" | "settings";
@@ -258,11 +259,14 @@ function LeadsSection(props: {
 function LeadRow({ lead, active, onOpen, onCopy, onContact }: { lead: DashboardLead; active: boolean; onOpen: () => void; onCopy: () => void; onContact: () => void }) {
   const brief = lead.brief as { one_line_summary?: string; suggested_opener?: string } | null;
   const temp = lead.temperature ?? "browsing";
+  const seller = isSellerLead(lead);
   return (
     <button className={cn("group flex w-full items-center gap-3 px-4 py-4 text-left hover:bg-white", active && "bg-white")} onClick={onOpen}>
       <span className={cn("h-2.5 w-2.5 rounded-full", temp === "hot" ? "bg-red-600" : temp === "warm" ? "bg-orange-500" : "bg-warm-muted")} />
       <div className="min-w-0 flex-1">
-        <p className={cn("truncate text-sm font-semibold", !lead.last_contacted_at && "font-bold")}>{lead.first_name || "Unknown"}</p>
+        <p className={cn("truncate text-sm font-semibold", !lead.last_contacted_at && "font-bold")}>
+          {lead.first_name || "Unknown"} {seller ? <span className="text-[var(--agent-accent)]">seller</span> : null}
+        </p>
         <p className="truncate text-sm text-warm-muted">{brief?.one_line_summary || lead.email}</p>
       </div>
       <p className="hidden text-xs text-warm-muted sm:block">{relative(lead.last_activity_at)}</p>
@@ -282,6 +286,8 @@ function LeadPanel({ lead, listings, copy, markContacted }: { lead: DashboardLea
   if (!currentLead) return <aside className="hidden p-8 text-sm text-warm-muted lg:block">Open a lead to see what to text and why.</aside>;
 
   const brief = currentLead.brief as { one_line_summary?: string; why_serious?: string[]; watch_outs?: string[]; suggested_opener?: string } | null;
+  const seller = isSellerLead(currentLead);
+  const sellerInfo = sellerDetails(currentLead.preferences);
   async function regenerate() {
     const leadForUpdate = leadState;
     if (!leadForUpdate) return;
@@ -300,27 +306,44 @@ function LeadPanel({ lead, listings, copy, markContacted }: { lead: DashboardLea
       <div className="space-y-6 p-5 pb-28">
         <header className="space-y-2">
           <p className="text-sm text-warm-muted">{currentLead.first_name || "Unknown"} • last active {relative(currentLead.last_activity_at)}</p>
-          <h2 className="font-serif text-3xl leading-tight">{brief?.one_line_summary || "Lead brief is being prepared."}</h2>
+          <h2 className="font-serif text-3xl leading-tight">
+            {brief?.one_line_summary || (seller ? "Seller inquiry received." : "Lead brief is being prepared.")}
+          </h2>
           <div className="flex flex-wrap gap-2 text-xs">
+            {seller ? <Badge>seller</Badge> : null}
             <Badge>{currentLead.temperature ?? currentLead.tier}</Badge>
             {currentLead.phone_verified ? <Badge>verified phone</Badge> : null}
             <button className="rounded-full border border-warm-border px-3 py-1" onClick={() => copy(currentLead.phone)}>Copy phone</button>
             <button className="rounded-full border border-warm-border px-3 py-1" onClick={() => copy(currentLead.email)}>Copy email</button>
           </div>
         </header>
-        <BriefList title="Why they're serious" items={brief?.why_serious ?? []} />
+        {seller ? (
+          <section className="rounded-2xl border border-warm-border bg-white p-4">
+            <p className="mb-2 text-sm font-semibold">Seller details</p>
+            <div className="space-y-2 text-sm text-warm-muted">
+              <p>Property: {sellerInfo?.property_address || sellerInfo?.neighborhood || "Not specified"}</p>
+              <p>Timeframe: {sellerInfo?.timeframe?.replaceAll("_", " ") || "Not specified"}</p>
+              {sellerInfo?.notes ? <p>Notes: {sellerInfo.notes}</p> : null}
+            </div>
+          </section>
+        ) : null}
+        <BriefList title={seller ? "Seller signals" : "Why they're serious"} items={brief?.why_serious ?? []} />
         <BriefList title="Watch-outs" items={brief?.watch_outs ?? []} />
         <section>
           <p className="mb-2 text-sm font-semibold">Send this</p>
           <div className="rounded-2xl border border-warm-border bg-[#FAFAF7] p-4 text-sm leading-6">{brief?.suggested_opener ?? "No opener yet."}</div>
           <div className="mt-3 flex gap-2">
             <Button className="flex-1" onClick={() => copy(brief?.suggested_opener ?? "", "Opener copied")}>Copy</Button>
-            <select className="rounded-xl border-warm-border bg-white text-sm" value={tone} onChange={(event) => setTone(event.target.value)}>
-              <option value="shorter">Shorter</option>
-              <option value="warmer">Warmer</option>
-              <option value="more_direct">More direct</option>
-            </select>
-            <Button variant="secondary" onClick={regenerate}>Regenerate</Button>
+            {!seller ? (
+              <>
+                <select className="rounded-xl border-warm-border bg-white text-sm" value={tone} onChange={(event) => setTone(event.target.value)}>
+                  <option value="shorter">Shorter</option>
+                  <option value="warmer">Warmer</option>
+                  <option value="more_direct">More direct</option>
+                </select>
+                <Button variant="secondary" onClick={regenerate}>Regenerate</Button>
+              </>
+            ) : null}
           </div>
         </section>
         <BriefList title={`Why this is ${currentLead.temperature ?? "browsing"}`} items={currentLead.temperature_reasons ?? []} />

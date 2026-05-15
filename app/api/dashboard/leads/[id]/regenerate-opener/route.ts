@@ -4,6 +4,7 @@ import { regenerateOpener } from "@/lib/ai/anthropic";
 import { parseJsonBody } from "@/lib/api/validation";
 import { getCurrentAgent } from "@/lib/auth/session";
 import { getDashboardLead } from "@/lib/dashboard/data";
+import { isSellerLead } from "@/lib/lead-intent";
 import { updateLead } from "@/lib/leads";
 
 const BodySchema = z.object({
@@ -20,6 +21,9 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   const { id } = await context.params;
   const lead = await getDashboardLead(agent, id);
   if (!lead) return NextResponse.json({ error: "Lead not found" }, { status: 404 });
+  if (isSellerLead(lead)) {
+    return NextResponse.json({ error: "Seller openers are generated from inquiry details" }, { status: 400 });
+  }
 
   const opener = await regenerateOpener({
     agent,
@@ -34,4 +38,3 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   const updated = await updateLead(lead.id, { brief });
   return NextResponse.json({ lead: updated, suggested_opener: opener.suggested_opener });
 }
-

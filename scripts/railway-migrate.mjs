@@ -157,10 +157,13 @@ create table if not exists agent_magic_links (
   user_id uuid not null,
   email text not null,
   token_hash text unique not null,
+  return_to text,
   used_at timestamptz,
   expires_at timestamptz not null,
   created_at timestamptz default now()
 );
+
+alter table agent_magic_links add column if not exists return_to text;
 
 create index if not exists events_lead_created_idx on events (lead_id, created_at desc);
 create index if not exists events_agent_type_created_idx on events (agent_id, event_type, created_at desc);
