@@ -22,7 +22,7 @@ import { SetupPreview } from "@/components/setup/setup-preview";
 import { DEAL_BREAKERS, MUST_HAVES } from "@/lib/constants";
 import { cn, formatCurrency } from "@/lib/formatting";
 import { clearedListingEnrichment } from "@/lib/listing-enrichment";
-import type { AgentSetupDraftData, ListingPayload } from "@/lib/types";
+import type { AgentSetupDraftData, ListingPayload, SelectedArea } from "@/lib/types";
 import type { AddressSuggestion, PropertyLookupResult } from "@/lib/property/lookup";
 
 const steps = ["welcome", "basics", "voice", "listings", "neighborhoods", "phone", "link", "simulation"] as const;
@@ -451,14 +451,62 @@ function Neighborhoods({
   onNext: () => void;
 }) {
   const [input, setInput] = useState("");
-  const selected = draft.neighborhoods ?? [];
-  const suggestions = Array.from(new Set([...listings.map((listing) => listing.neighborhood).filter(Boolean), "Downtown", "North Loop", "Lakefront", "Westside"] as string[]));
+  const [suggestions, setSuggestions] = useState<SelectedArea[]>([]);
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
+  const [suggestionsBusy, setSuggestionsBusy] = useState(false);
+  const selected = useMemo(() => draft.neighborhoods ?? [], [draft.neighborhoods]);
+  const quickPicks = useMemo(
+    () => Array.from(new Set([...listings.map((listing) => listing.neighborhood).filter(Boolean), "Downtown", "North Loop", "Lakefront", "Westside"] as string[])),
+    [listings]
+  );
+
+  useEffect(() => {
+    if (!suggestionsOpen) return;
+    const query = input.trim();
+    if (query.length < 2) {
+      setSuggestions([]);
+      setSuggestionsBusy(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    const timeout = window.setTimeout(async () => {
+      setSuggestionsBusy(true);
+      try {
+        const response = await fetch("/api/setup/location-suggestions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            query,
+            market: draft.market ?? "",
+            neighborhoods: selected
+          }),
+          signal: controller.signal
+        });
+        const json = (await response.json().catch(() => null)) as { suggestions?: SelectedArea[] } | null;
+        if (!controller.signal.aborted) {
+          setSuggestions(response.ok ? (json?.suggestions ?? []) : []);
+        }
+      } catch {
+        if (!controller.signal.aborted) setSuggestions([]);
+      } finally {
+        if (!controller.signal.aborted) setSuggestionsBusy(false);
+      }
+    }, 180);
+
+    return () => {
+      controller.abort();
+      window.clearTimeout(timeout);
+    };
+  }, [draft.market, input, selected, suggestionsOpen]);
 
   async function add(value: string) {
     const clean = value.trim();
-    if (!clean || selected.includes(clean) || selected.length >= 15) return;
+    if (!clean || selected.some((item) => normalizeLocationLabel(item) === normalizeLocationLabel(clean)) || selected.length >= 15) return;
     await savePatch({ neighborhoods: [...selected, clean] });
     setInput("");
+    setSuggestions([]);
+    setSuggestionsOpen(false);
   }
 
   async function remove(value: string) {
@@ -476,19 +524,125 @@ function Neighborhoods({
         ))}
       </div>
       <div className="flex gap-2">
-        <input className="h-14 flex-1 rounded-2xl border-warm-border bg-white px-4" value={input} onChange={(event) => setInput(event.target.value)} placeholder="Add neighborhood" />
-        <Button variant="secondary" onClick={() => add(input)}><Plus size={18} /></Button>
+        <SetupLocationCombobox
+          value={input}
+          suggestions={suggestions}
+          suggestionsOpen={suggestionsOpen}
+          suggestionsBusy={suggestionsBusy}
+          onChange={(value) => {
+            setInput(value);
+            setSuggestionsOpen(value.trim().length >= 2);
+          }}
+          onFocus={() => setSuggestionsOpen(input.trim().length >= 2)}
+          onBlur={() => window.setTimeout(() => setSuggestionsOpen(false), 120)}
+          onEnterFirstSuggestion={() => {
+            if (suggestions[0]) void add(suggestions[0].label);
+            else void add(input);
+          }}
+          onSelect={(suggestion) => void add(suggestion.label)}
+        />
+        <Button variant="secondary" onClick={() => add(input)} aria-label="Add typed neighborhood"><Plus size={18} /></Button>
       </div>
       <div className="flex flex-wrap gap-2">
-        {suggestions.filter(Boolean).map((item) => (
+        {quickPicks.filter(Boolean).map((item) => (
           <button key={item} className="rounded-full border border-warm-border bg-white px-4 py-2 text-sm" onClick={() => add(item)}>
             {item}
           </button>
         ))}
       </div>
-      <Button className="w-full gap-2" disabled={selected.length < 4} onClick={onNext}>Continue <ArrowRight size={18} /></Button>
+      <Button className="w-full gap-2" disabled={selected.length < 1} onClick={onNext}>Continue <ArrowRight size={18} /></Button>
     </div>
   );
+}
+
+function SetupLocationCombobox({
+  value,
+  suggestions,
+  suggestionsOpen,
+  suggestionsBusy,
+  onChange,
+  onFocus,
+  onBlur,
+  onEnterFirstSuggestion,
+  onSelect
+}: {
+  value: string;
+  suggestions: SelectedArea[];
+  suggestionsOpen: boolean;
+  suggestionsBusy: boolean;
+  onChange: (value: string) => void;
+  onFocus: () => void;
+  onBlur: () => void;
+  onEnterFirstSuggestion: () => void;
+  onSelect: (suggestion: SelectedArea) => void;
+}) {
+  const inputId = useId();
+  const listboxId = `${inputId}-suggestions`;
+  const showDropdown = suggestionsOpen && (suggestionsBusy || suggestions.length > 0);
+  const hasGoogleSuggestions = suggestions.some((suggestion) => suggestion.source === "google_places");
+
+  return (
+    <div className="relative flex-1">
+      <input
+        id={inputId}
+        className="h-14 w-full rounded-2xl border-warm-border bg-white px-4"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        onFocus={onFocus}
+        onBlur={onBlur}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            onEnterFirstSuggestion();
+          }
+        }}
+        role="combobox"
+        aria-expanded={showDropdown}
+        aria-controls={listboxId}
+        aria-autocomplete="list"
+        aria-label="Add neighborhood"
+        placeholder="Add city or neighborhood"
+      />
+      {showDropdown ? (
+        <div
+          id={listboxId}
+          className="absolute left-0 right-0 top-full z-30 mt-2 overflow-hidden rounded-2xl border border-warm-border bg-white text-sm shadow-soft"
+          role="listbox"
+        >
+          {suggestionsBusy && !suggestions.length ? (
+            <p className="px-4 py-3 text-warm-muted">Finding areas...</p>
+          ) : null}
+          {suggestions.map((suggestion) => (
+            <button
+              key={setupLocationKey(suggestion)}
+              className="block w-full border-b border-warm-border px-4 py-3 text-left last:border-b-0 hover:bg-[#FAFAF7]"
+              type="button"
+              role="option"
+              aria-selected="false"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => onSelect(suggestion)}
+            >
+              <span className="block font-semibold">{suggestion.label}</span>
+              {suggestion.parentLabel ? (
+                <span className="mt-1 block text-xs text-warm-muted">{suggestion.parentLabel}</span>
+              ) : null}
+            </button>
+          ))}
+          {hasGoogleSuggestions ? (
+            <p className="bg-[#FAFAF7] px-4 py-2 text-right text-[11px] font-semibold text-warm-muted">Powered by Google</p>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function setupLocationKey(area: SelectedArea) {
+  return area.placeId?.trim() || [area.source, area.type, normalizeLocationLabel(area.label), normalizeLocationLabel(area.parentLabel ?? "")].join(":");
+}
+
+function normalizeLocationLabel(value: string) {
+  return value.trim().toLowerCase();
 }
 
 function PhoneStep(props: {

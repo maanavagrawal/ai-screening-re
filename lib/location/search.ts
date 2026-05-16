@@ -19,13 +19,15 @@ type GoogleSuggestion = {
 
 export async function searchLocationSuggestions(input: {
   query: string;
-  agent: Agent;
-  listings?: Listing[];
+  providerQuery?: string;
+  agent: Pick<Agent, "market" | "neighborhoods">;
+  listings?: Array<Pick<Listing, "neighborhood">>;
 }): Promise<LocationSuggestion[]> {
   const query = input.query.trim();
+  const providerQuery = input.providerQuery?.trim() || query;
   const apiKey = requiredProviderEnv("GOOGLE_PLACES_API_KEY", "buyer area autocomplete");
-  if (query.length >= 2) {
-    const google = await googleLocationSuggestions(query, apiKey);
+  if (providerQuery.length >= 2) {
+    const google = await googleLocationSuggestions(providerQuery, apiKey);
     if (google.length) return google;
   }
 

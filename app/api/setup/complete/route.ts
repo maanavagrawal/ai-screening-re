@@ -18,7 +18,7 @@ function makePayload(data: Partial<AgentSetupDraftData>, userId: string) {
   const neighborhoods = data.neighborhoods?.length
     ? data.neighborhoods
     : Array.from(new Set(data.listings.map((listing) => listing.neighborhood).filter(Boolean) as string[]));
-  if (neighborhoods.length < 4) throw new Error("Add at least 4 neighborhoods");
+  if (neighborhoods.length < 1) throw new Error("Add at least 1 neighborhood");
 
   return {
     userId,

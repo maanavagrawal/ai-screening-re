@@ -110,6 +110,57 @@ test("setup listing entry starts with address lookup and reveals details", async
   await expect(page.getByText("Autofill from text").first()).toBeVisible();
 });
 
+test("setup neighborhoods autocomplete and continue after one area", async ({ page }, testInfo) => {
+  const suffix = `${testInfo.project.name}-${Date.now()}`.toLowerCase().replace(/[^a-z0-9-]/g, "-");
+
+  await page.goto("/signup");
+  await page.getByLabel("Email").fill(`setup-areas-${suffix}@example.com`);
+  await page.getByRole("button", { name: "Send magic link" }).click();
+  await page.getByRole("button", { name: "Continue" }).click();
+  await expect(page.getByText("In 10 minutes")).toBeVisible();
+
+  await page.request.post("/api/setup/save-draft", {
+    data: {
+      current_step: "neighborhoods",
+      data: {
+        market: "San Francisco, CA",
+        listings: []
+      }
+    }
+  });
+  await page.route("**/api/setup/location-suggestions", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        suggestions: [
+          {
+            label: "San Ramon",
+            placeId: `setup-area-${suffix}`,
+            source: "google_places",
+            type: "city",
+            parentLabel: "California, USA"
+          }
+        ]
+      })
+    });
+  });
+
+  await page.goto("/setup/neighborhoods", { waitUntil: "domcontentloaded" });
+  await expect(page.getByTestId("setup-ready")).toHaveText("ready");
+  const continueButton = page.getByRole("button", { name: "Continue" });
+  await expect(continueButton).toBeDisabled();
+
+  await page.getByLabel("Add neighborhood").fill("San");
+  await expect(page.getByRole("option", { name: /San Ramon/ })).toBeVisible();
+  await page.getByRole("option", { name: /San Ramon/ }).click();
+
+  await expect(page.getByRole("button", { name: "San Ramon" })).toBeVisible();
+  await expect(continueButton).toBeEnabled();
+  await continueButton.click();
+  await expect(page.getByRole("heading", { name: "Where should buyer notifications go?" })).toBeVisible();
+});
+
 test("agent can publish setup, receive a lead, and work it from the dashboard", async ({ page }, testInfo) => {
   test.setTimeout(90_000);
   const suffix = `${testInfo.project.name}-${Date.now()}`.toLowerCase().replace(/[^a-z0-9-]/g, "-");

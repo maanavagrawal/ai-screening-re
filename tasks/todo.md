@@ -2,6 +2,21 @@
 
 ## Priority 1
 
+- [x] Add setup neighborhood autocomplete and one-area minimum
+  - Goal: setup neighborhood entry should suggest cities/neighborhoods while typing, biased by the agent's market, and Continue should unlock after at least one selected area.
+  - Plan:
+    - [x] Add a setup-authenticated location suggestion route that reuses Google Places/location fallback helpers with market context.
+    - [x] Replace the plain add-neighborhood input with an accessible combobox/dropdown and Enter/select behavior.
+    - [x] Keep static/listing-derived chips as quick picks and prevent duplicate selections.
+    - [x] Change setup UI and publish validation from four neighborhoods to at least one.
+    - [x] Add regression coverage and run verification.
+  - Review:
+    - Added `/api/setup/location-suggestions`, authenticated by setup user session, reusing the location suggestion helper with a market-biased provider query.
+    - The setup neighborhoods step now opens a dropdown while typing cities/neighborhoods, supports selecting a suggestion or pressing Enter, and still keeps listing/default quick-pick chips.
+    - Continue now unlocks after one selected area, and setup publish validation also accepts one area.
+    - Added unit coverage for setup suggestions and one-neighborhood setup completion, plus desktop/mobile e2e coverage for autocomplete and one-area Continue behavior.
+    - Verification: `./scripts/test.sh` passed with lint, typecheck, and 108 unit tests; `./scripts/e2e.sh` passed with 16 desktop/mobile Playwright tests; `npm run build` passed; `git diff --check` passed.
+
 - [x] Redesign setup listing entry around address-first enrichment
   - Goal: setup listing cards should let agents enter/select an address first, automatically pull property facts, then reveal the common listing fields to confirm.
   - Design review findings:
