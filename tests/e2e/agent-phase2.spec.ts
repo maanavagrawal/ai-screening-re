@@ -10,14 +10,14 @@ test("root domain routes buyers, sellers, and agents by intent", async ({ page }
   await page.getByRole("button", { name: /Buy a home/ }).click();
   await page.getByLabel("Agent link or code").fill("maya");
   await page.getByRole("button", { name: "Check link" }).click();
-  await page.getByRole("button", { name: "Continue to Maya Chen" }).click();
+  await page.getByRole("link", { name: "Continue to Maya Chen" }).click();
   await expect(page).toHaveURL(/\/maya$/);
 
   await page.goto("/");
   await page.getByRole("button", { name: /Sell a home/ }).click();
   await page.getByLabel("Agent link or code").fill("/maya");
   await page.getByRole("button", { name: "Check link" }).click();
-  await page.getByRole("button", { name: "Continue to Maya Chen" }).click();
+  await page.getByRole("link", { name: "Continue to Maya Chen" }).click();
   await expect(page).toHaveURL(/\/maya\/seller$/);
 
   await page.goto("/");

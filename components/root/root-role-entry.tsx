@@ -3,9 +3,8 @@
 import { Fragment, useState } from "react";
 import { ArrowRight, Building2, Home, KeyRound } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { SignupForm } from "@/components/auth/signup-form";
-import { Button } from "@/components/ui/button";
+import { Button, LinkButton } from "@/components/ui/button";
 import { cn } from "@/lib/formatting";
 
 type Role = "buyer" | "seller" | "agent";
@@ -114,7 +113,6 @@ function RolePanel({ role }: { role: Role }) {
 }
 
 function AgentLinkPanel({ intent }: { intent: "buyer" | "seller" }) {
-  const router = useRouter();
   const [value, setValue] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -142,12 +140,7 @@ function AgentLinkPanel({ intent }: { intent: "buyer" | "seller" }) {
 
     setResolved(json.agent);
   }
-
-  function continueToAgent() {
-    if (!resolved) return;
-    router.push(intent === "buyer" ? `/${resolved.slug}` : `/${resolved.slug}/seller`);
-  }
-
+  const destination = resolved ? (intent === "buyer" ? `/${resolved.slug}` : `/${resolved.slug}/seller`) : null;
   return (
     <form
       className="max-w-xl rounded-2xl border border-warm-border bg-white/80 p-5 shadow-soft"
@@ -178,11 +171,11 @@ function AgentLinkPanel({ intent }: { intent: "buyer" | "seller" }) {
           {loading ? "Checking..." : "Check link"}
           <ArrowRight size={18} />
         </Button>
-        {resolved ? (
-          <Button className="gap-2" type="button" variant="secondary" onClick={continueToAgent}>
+        {resolved && destination ? (
+          <LinkButton className="gap-2" href={destination} variant="secondary">
             Continue to {resolved.name}
             <ArrowRight size={18} />
-          </Button>
+          </LinkButton>
         ) : null}
       </div>
     </form>
