@@ -21,4 +21,10 @@ describe("buyer listing-card media", () => {
     expect(source).toContain("ExternalLink");
     expect(source).toContain("listing.video_source === \"mp4\"");
   });
+
+  it("keeps social video calls to action clear of the no-media footer copy", () => {
+    expect(source).toContain("hasExternalVideo");
+    expect(source).toContain("hasExternalVideo && \"pb-24\"");
+    expect(source).toContain("Open ${listing.video_source === \"tiktok\" ? \"TikTok\" : \"Instagram\"}");
+  });
 });

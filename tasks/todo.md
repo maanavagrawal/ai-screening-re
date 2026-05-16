@@ -2,6 +2,25 @@
 
 ## Priority 1
 
+- [x] Fix buyer budget range, city selection identity, and social-media card layout
+  - Goal: buyer-side intake and match cards should handle high-price markets, select only the clicked location suggestion, and avoid overlapping Instagram/TikTok CTAs with no-media copy.
+  - Root cause hypothesis:
+    - [x] Budget range inputs hard-code a `2,000,000` maximum.
+    - [x] Location suggestions are treated as selected by `label + type`, so duplicate city names from different places render as selected together.
+    - [x] Social video links are absolutely positioned over the same no-media footer text.
+  - Plan:
+    - [x] Raise the buyer budget slider ceiling and add a source-level guard.
+    - [x] Key selected locations by durable place identity with a deterministic fallback, and use that key for active state/toggle/removal.
+    - [x] Reserve space or adjust placeholder copy when an external social video CTA is present.
+    - [x] Add regression tests for duplicate city selection, budget ceiling, and social CTA layout.
+    - [x] Run typecheck, unit/test wrapper, e2e, build, and diff checks.
+  - Review:
+    - Buyer budget intake now supports high-price markets up to `$10M+`; choosing the top slider value saves the budget as open-ended above the selected minimum instead of filtering out higher-priced listings.
+    - Buyer location suggestions now compare selected areas by `placeId` first, then source/type/label/parent fallback, so clicking `San Ramon, California` does not also select `San Ramon, Costa Rica`.
+    - Social-video listing cards now reserve footer space, keep the external CTA above the no-media panel, and swap `Real media coming soon` for social-specific copy when Instagram/TikTok video links are present.
+    - Added unit/render coverage for the expanded budget cap, duplicate city selection, and social-video card copy/layout guard.
+    - Verification: focused unit tests passed; `npm run typecheck` passed; `./scripts/test.sh` passed with lint, typecheck, and 105 unit tests; `./scripts/e2e.sh` passed with 12 desktop/mobile Playwright tests after sandbox server-bind escalation; `npm run build` passed; `git diff --check` passed.
+
 - [x] Add fast dashboard listing address suggestions and one-step enrichment
   - Goal: dashboard listing entry should show address suggestions while typing, let Enter select the top match, and populate property facts without a second "Use facts" click.
   - Root cause hypothesis:

@@ -217,8 +217,9 @@ export function LocationQuestion({
 
   function toggle(area: SelectedArea) {
     setSelected((current) => {
-      const exists = current.some((item) => item.label === area.label && item.type === area.type);
-      return exists ? current.filter((item) => !(item.label === area.label && item.type === area.type)) : [...current, area];
+      const key = locationAreaKey(area);
+      const exists = current.some((item) => locationAreaKey(item) === key);
+      return exists ? current.filter((item) => locationAreaKey(item) !== key) : [...current, area];
     });
   }
 
@@ -234,7 +235,7 @@ export function LocationQuestion({
       <div className="mt-3 flex flex-wrap gap-2">
         {selected.map((area) => (
           <button
-            key={`${area.type}:${area.label}`}
+            key={locationAreaKey(area)}
             type="button"
             disabled={disabled}
             className="rounded-full bg-[var(--agent-accent)] px-3 py-2 text-xs font-semibold text-white"
@@ -246,10 +247,10 @@ export function LocationQuestion({
       </div>
       <div className="mt-4 grid gap-2">
         {suggestions.slice(0, 6).map((area) => {
-          const active = selected.some((item) => item.label === area.label && item.type === area.type);
+          const active = selected.some((item) => locationAreaKey(item) === locationAreaKey(area));
           return (
             <button
-              key={`${area.type}:${area.label}:${area.placeId ?? ""}`}
+              key={locationAreaKey(area)}
               type="button"
               disabled={disabled}
               aria-pressed={active}
@@ -304,4 +305,19 @@ function manualLocationSuggestion(label: string): LocationSuggestion {
     type: "custom",
     attribution: "manual"
   };
+}
+
+function locationAreaKey(area: Pick<SelectedArea, "label" | "placeId" | "source" | "type" | "parentLabel">) {
+  const placeId = area.placeId?.trim();
+  if (placeId) return `place:${placeId}`;
+  return [
+    area.source,
+    area.type,
+    normalizeAreaKeyPart(area.label),
+    normalizeAreaKeyPart(area.parentLabel ?? "")
+  ].join(":");
+}
+
+function normalizeAreaKeyPart(value: string) {
+  return value.trim().toLowerCase();
 }

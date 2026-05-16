@@ -106,8 +106,9 @@ export function IntakeFlow({ agent }: { agent: Agent }) {
       if (value === "no") nextAnswers.tier_hint = "browsing";
     }
     if (questionId === "budget") {
-      nextAnswers.budget_min = (value as { min: number; max: number }).min;
-      nextAnswers.budget_max = (value as { min: number; max: number }).max;
+      const budget = value as { min: number; max?: number };
+      nextAnswers.budget_min = budget.min;
+      nextAnswers.budget_max = budget.max;
     }
     if (questionId === "bedrooms") nextAnswers.bedrooms = value as IntakeAnswers["bedrooms"];
     if (questionId === "bathrooms") nextAnswers.bathrooms = value as IntakeAnswers["bathrooms"];

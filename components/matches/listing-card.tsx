@@ -3,7 +3,7 @@
 import { ExternalLink, EyeOff, Home, LockKeyhole } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { firstName, formatCurrency } from "@/lib/formatting";
+import { cn, firstName, formatCurrency } from "@/lib/formatting";
 import { BUYER_ADDRESS_PLACEHOLDER, buyerLocationLabel } from "@/lib/listing-privacy";
 import type { Agent, Listing } from "@/lib/types";
 
@@ -46,7 +46,7 @@ export function ListingCard({
   return (
     <article aria-label={`${locationLabel} match`} className="min-h-[70svh] overflow-hidden rounded-2xl border border-warm-border bg-white shadow-soft">
       <div className="relative aspect-[4/5] overflow-hidden bg-[#F1EEE8]">
-        <NoMediaPanel listing={listing} locationLabel={locationLabel} />
+        <NoMediaPanel listing={listing} locationLabel={locationLabel} hasExternalVideo={canShowExternalVideo} />
         {canShowVideo ? (
           <video
             aria-label={`Video preview for ${locationLabel}`}
@@ -69,7 +69,7 @@ export function ListingCard({
         ) : null}
         {canShowExternalVideo ? (
           <a
-            className="absolute bottom-4 left-4 right-4 inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-white/92 px-4 py-3 text-sm font-semibold text-warm-text shadow-soft"
+            className="absolute bottom-4 left-4 right-4 z-10 inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-white/92 px-4 py-3 text-sm font-semibold text-warm-text shadow-soft"
             href={listing.video_url ?? undefined}
             target="_blank"
             rel="noreferrer"
@@ -113,9 +113,22 @@ export function ListingCard({
   );
 }
 
-function NoMediaPanel({ listing, locationLabel }: { listing: Listing; locationLabel: string }) {
+function NoMediaPanel({
+  listing,
+  locationLabel,
+  hasExternalVideo
+}: {
+  listing: Listing;
+  locationLabel: string;
+  hasExternalVideo?: boolean;
+}) {
   return (
-    <div className="absolute inset-0 flex flex-col justify-between bg-[#EDE8DE] p-6 text-warm-text">
+    <div
+      className={cn(
+        "absolute inset-0 flex flex-col justify-between bg-[#EDE8DE] p-6 text-warm-text",
+        hasExternalVideo && "pb-24"
+      )}
+    >
       <div className="flex justify-between text-xs font-semibold uppercase tracking-[0.16em] text-warm-muted">
         <span>{listing.neighborhood ?? locationLabel}</span>
         <span>{listing.property_type?.replaceAll("_", " ") ?? "Home"}</span>
@@ -129,10 +142,14 @@ function NoMediaPanel({ listing, locationLabel }: { listing: Listing; locationLa
           {listing.beds} beds • {listing.baths} baths{listing.sqft ? ` • ${listing.sqft.toLocaleString()} sqft` : ""}
         </p>
         <p className="mt-5 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--agent-accent)]">
-          Media pending
+          {hasExternalVideo ? "Social video" : "Media pending"}
         </p>
       </div>
-      <p className="text-sm leading-6 text-warm-muted">Real media coming soon.</p>
+      <p className="text-sm leading-6 text-warm-muted">
+        {hasExternalVideo
+          ? `Open ${listing.video_source === "tiktok" ? "TikTok" : "Instagram"} to watch the agent's video.`
+          : "Real media coming soon."}
+      </p>
     </div>
   );
 }
