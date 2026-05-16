@@ -18,7 +18,7 @@ describe("provider config", () => {
       ok: false,
       missing: [
         { envVar: "ATTOM_API_KEY", feature: "listing property lookup" },
-        { envVar: "GOOGLE_PLACES_API_KEY", feature: "buyer area autocomplete" }
+        { envVar: "GOOGLE_PLACES_API_KEY", feature: "buyer area and listing address autocomplete" }
       ]
     });
   });

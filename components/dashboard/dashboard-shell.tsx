@@ -1,7 +1,7 @@
 "use client";
 
 /* eslint-disable @next/next/no-img-element */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import Image from "next/image";
 import Link from "next/link";
@@ -33,7 +33,7 @@ import { cn, formatCurrency } from "@/lib/formatting";
 import { isSellerLead, sellerDetails } from "@/lib/lead-intent";
 import { clearedListingEnrichment } from "@/lib/listing-enrichment";
 import type { Agent, DashboardLead, Listing, ListingPayload, NotificationPreferences } from "@/lib/types";
-import type { PropertyLookupResult } from "@/lib/property/lookup";
+import type { AddressSuggestion, PropertyLookupResult } from "@/lib/property/lookup";
 
 type Section = "leads" | "listings" | "distribution" | "settings";
 
@@ -673,24 +673,69 @@ function ListingForm({
   const [lookupBusy, setLookupBusy] = useState(false);
   const [lookupResult, setLookupResult] = useState<PropertyLookupResult | null>(null);
   const [lookupMessage, setLookupMessage] = useState("");
+  const [addressSuggestions, setAddressSuggestions] = useState<AddressSuggestion[]>([]);
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
+  const [suggestionsBusy, setSuggestionsBusy] = useState(false);
 
   useEffect(() => {
+    if (draft.address.trim()) return;
     setLookupResult(null);
     setLookupMessage("");
+    setAddressSuggestions([]);
+    setSuggestionsOpen(false);
   }, [draft.address]);
 
-  async function lookupProperty() {
-    if (!draft.address.trim()) return;
+  useEffect(() => {
+    if (!suggestionsOpen) return;
+    const query = draft.address.trim();
+    if (query.length < 3) {
+      setAddressSuggestions([]);
+      setSuggestionsBusy(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    const timeout = window.setTimeout(async () => {
+      setSuggestionsBusy(true);
+      try {
+        const response = await fetch("/api/listing-address-suggestions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ query }),
+          signal: controller.signal
+        });
+        const json = (await response.json().catch(() => null)) as { suggestions?: AddressSuggestion[] } | null;
+        if (!controller.signal.aborted) {
+          setAddressSuggestions(response.ok ? (json?.suggestions ?? []) : []);
+        }
+      } catch {
+        if (!controller.signal.aborted) setAddressSuggestions([]);
+      } finally {
+        if (!controller.signal.aborted) setSuggestionsBusy(false);
+      }
+    }, 180);
+
+    return () => {
+      controller.abort();
+      window.clearTimeout(timeout);
+    };
+  }, [draft.address, suggestionsOpen]);
+
+  async function lookupAndApply(address: string) {
+    const cleanAddress = address.trim();
+    if (!cleanAddress) return;
     setLookupBusy(true);
+    setLookupMessage("");
     try {
       const response = await fetch("/api/listing-property-search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ address: draft.address })
+        body: JSON.stringify({ address: cleanAddress })
       });
       const json = (await response.json().catch(() => null)) as { result?: PropertyLookupResult; error?: string } | null;
       if (response.ok && json?.result) {
         setLookupResult(json.result);
+        applyLookup(json.result);
         setLookupMessage(json.result.message);
       } else {
         setLookupMessage(json?.error ?? "Could not look up property facts.");
@@ -702,16 +747,31 @@ function ListingForm({
     }
   }
 
+  function updateAddress(address: string) {
+    setDraft((current) => ({ ...current, address, enrichment: clearedListingEnrichment() }));
+    setLookupResult(null);
+    setLookupMessage("");
+    setAddressSuggestions([]);
+    setSuggestionsOpen(address.trim().length >= 3);
+  }
+
+  function selectAddressSuggestion(suggestion: AddressSuggestion) {
+    setSuggestionsOpen(false);
+    setAddressSuggestions([]);
+    setDraft((current) => ({ ...current, address: suggestion.label, enrichment: clearedListingEnrichment() }));
+    void lookupAndApply(suggestion.label);
+  }
+
   function applyLookup(result: PropertyLookupResult) {
     const facts = result.propertyFacts ?? {};
     setDraft((current) => ({
       ...current,
       address: result.normalizedAddress?.label ?? current.address,
       neighborhood: current.neighborhood || result.normalizedAddress?.city || "",
-      beds: current.beds || (facts.beds ? String(facts.beds) : ""),
-      baths: current.baths || (facts.baths ? String(facts.baths) : ""),
-      sqft: current.sqft || (facts.sqft ? String(facts.sqft) : ""),
-      property_type: current.property_type || propertyTypeValue(facts.propertyType) || "",
+      beds: facts.beds ? String(facts.beds) : current.beds,
+      baths: facts.baths ? String(facts.baths) : current.baths,
+      sqft: facts.sqft ? String(facts.sqft) : current.sqft,
+      property_type: propertyTypeValue(facts.propertyType) || current.property_type,
       enrichment: {
         attomId: result.attomId,
         propertyDataSource: result.propertyDataSource,
@@ -735,13 +795,20 @@ function ListingForm({
           </Button>
         ) : null}
       </div>
-      <DashboardListingInput
-        className="sm:col-span-2"
-        label="Address"
+      <AddressSuggestionInput
         value={draft.address}
-        onChange={(address) => setDraft((current) => ({ ...current, address, enrichment: clearedListingEnrichment() }))}
+        suggestions={addressSuggestions}
+        suggestionsOpen={suggestionsOpen}
+        suggestionsBusy={suggestionsBusy}
+        onChange={updateAddress}
+        onFocus={() => setSuggestionsOpen(draft.address.trim().length >= 3)}
+        onBlur={() => window.setTimeout(() => setSuggestionsOpen(false), 120)}
+        onEnterFirstSuggestion={() => {
+          if (addressSuggestions[0]) selectAddressSuggestion(addressSuggestions[0]);
+        }}
+        onSelect={selectAddressSuggestion}
       />
-      <Button className="gap-2" variant="secondary" disabled={!draft.address || lookupBusy} onClick={lookupProperty}>
+      <Button className="gap-2" variant="secondary" disabled={!draft.address || lookupBusy} onClick={() => lookupAndApply(draft.address)}>
         <Search size={16} />
         {lookupBusy ? "Looking..." : "Lookup facts"}
       </Button>
@@ -750,10 +817,6 @@ function ListingForm({
         <div className="rounded-xl border border-warm-border bg-[#FAFAF7] p-3 text-sm sm:col-span-3">
           <p className="font-semibold">{lookupResult.normalizedAddress?.label ?? draft.address}</p>
           <p className="mt-1 text-warm-muted">{propertyFactLine(lookupResult)}</p>
-          <Button className="mt-3 gap-2" variant="secondary" onClick={() => applyLookup(lookupResult)}>
-            <Save size={15} />
-            Use facts
-          </Button>
         </div>
       ) : null}
       <DashboardListingInput label="Price" value={draft.price} onChange={(price) => setDraft((current) => ({ ...current, price: price.replace(/\D/g, "") }))} />
@@ -781,6 +844,89 @@ function ListingForm({
         <Save size={16} />
         {busy ? "Saving..." : submitLabel}
       </Button>
+    </div>
+  );
+}
+
+function AddressSuggestionInput({
+  value,
+  suggestions,
+  suggestionsOpen,
+  suggestionsBusy,
+  onChange,
+  onFocus,
+  onBlur,
+  onEnterFirstSuggestion,
+  onSelect
+}: {
+  value: string;
+  suggestions: AddressSuggestion[];
+  suggestionsOpen: boolean;
+  suggestionsBusy: boolean;
+  onChange: (value: string) => void;
+  onFocus: () => void;
+  onBlur: () => void;
+  onEnterFirstSuggestion: () => void;
+  onSelect: (suggestion: AddressSuggestion) => void;
+}) {
+  const showDropdown = suggestionsOpen && (suggestionsBusy || suggestions.length > 0);
+  const inputId = useId();
+  const listboxId = `${inputId}-suggestions`;
+  const hasGoogleSuggestions = suggestions.some((suggestion) => suggestion.source === "google_places");
+
+  return (
+    <div className="relative block sm:col-span-2">
+      <label className="text-xs font-semibold text-warm-muted" htmlFor={inputId}>Address</label>
+      <input
+        id={inputId}
+        className="mt-1 w-full rounded-xl border-warm-border text-sm"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        onFocus={onFocus}
+        onBlur={onBlur}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" && suggestionsOpen && suggestions.length > 0) {
+            event.preventDefault();
+            onEnterFirstSuggestion();
+          }
+        }}
+        role="combobox"
+        aria-expanded={showDropdown}
+        aria-controls={listboxId}
+        aria-autocomplete="list"
+        aria-label="Address"
+        placeholder="Start typing an address"
+      />
+      {showDropdown ? (
+        <div
+          id={listboxId}
+          className="absolute left-0 right-0 top-full z-30 mt-2 overflow-hidden rounded-xl border border-warm-border bg-white text-sm shadow-soft"
+          role="listbox"
+        >
+          {suggestionsBusy && !suggestions.length ? (
+            <p className="px-3 py-3 text-warm-muted">Finding addresses...</p>
+          ) : null}
+          {suggestions.map((suggestion) => (
+            <button
+              key={`${suggestion.source}:${suggestion.placeId ?? suggestion.label}`}
+              className="block w-full border-b border-warm-border px-3 py-3 text-left last:border-b-0 hover:bg-[#FAFAF7]"
+              type="button"
+              role="option"
+              aria-selected="false"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => onSelect(suggestion)}
+            >
+              <span className="block font-semibold">{suggestion.label}</span>
+              {suggestion.secondaryLabel && !suggestion.label.includes(suggestion.secondaryLabel) ? (
+                <span className="mt-1 block text-xs text-warm-muted">{suggestion.secondaryLabel}</span>
+              ) : null}
+            </button>
+          ))}
+          {hasGoogleSuggestions ? (
+            <p className="bg-[#FAFAF7] px-3 py-2 text-right text-[11px] font-semibold text-warm-muted">Powered by Google</p>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }

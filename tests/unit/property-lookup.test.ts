@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fixturePropertyLookup, lookupPropertyByAddress, normalizeAttomProperty } from "@/lib/property/lookup";
+import {
+  fixturePropertyLookup,
+  lookupPropertyByAddress,
+  normalizeAttomProperty,
+  searchListingAddressSuggestions
+} from "@/lib/property/lookup";
 
 describe("property lookup normalization", () => {
   afterEach(() => {
@@ -67,5 +72,46 @@ describe("property lookup normalization", () => {
 
     expect(result.propertyDataSource).toBe("manual");
     expect(result.message).toContain("No ATTOM match");
+  });
+
+  it("returns Google Places address suggestions for dashboard listing entry", async () => {
+    vi.stubEnv("GOOGLE_PLACES_API_KEY", "places-test-key");
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          suggestions: [
+            {
+              placePrediction: {
+                placeId: "place-1",
+                text: { text: "24 Lakeview Lane, Denver, CO 80211" },
+                structuredFormat: {
+                  mainText: { text: "24 Lakeview Lane" },
+                  secondaryText: { text: "Denver, CO 80211" }
+                }
+              }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        }
+      )
+    );
+
+    const suggestions = await searchListingAddressSuggestions("24 lake");
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      "https://places.googleapis.com/v1/places:autocomplete",
+      expect.objectContaining({
+        body: expect.stringContaining('"includedPrimaryTypes":["street_address","premise","subpremise"]')
+      })
+    );
+    expect(suggestions[0]).toEqual({
+      label: "24 Lakeview Lane, Denver, CO 80211",
+      placeId: "place-1",
+      secondaryLabel: "Denver, CO 80211",
+      source: "google_places"
+    });
   });
 });

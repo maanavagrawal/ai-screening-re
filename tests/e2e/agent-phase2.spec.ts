@@ -121,21 +121,72 @@ test("agent can publish setup, receive a lead, and work it from the dashboard", 
   await expect(page.getByText("Headline generated")).toBeVisible();
   await expect(headlineInput).toHaveValue(/Denver buyer advisor/);
 
+  const managedAddress = `24 ${suffix} Listing Lane`;
+  const suggestedManagedAddress = `${managedAddress}, Denver, CO 80211`;
+  await page.route("**/api/listing-address-suggestions", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        suggestions: [
+          {
+            label: suggestedManagedAddress,
+            placeId: `place-${suffix}`,
+            secondaryLabel: "Denver, CO 80211",
+            source: "google_places"
+          }
+        ]
+      })
+    });
+  });
+  await page.route("**/api/listing-property-search", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        result: {
+          attomId: `attom-${suffix}`,
+          propertyDataSource: "attom",
+          propertyEnrichedAt: "2026-05-16T00:00:00.000Z",
+          propertyMatchConfidence: 0.95,
+          normalizedAddress: {
+            line1: managedAddress,
+            city: "Denver",
+            state: "CO",
+            postalCode: "80211",
+            label: suggestedManagedAddress
+          },
+          propertyFacts: {
+            beds: 4,
+            baths: 3,
+            sqft: 2100,
+            propertyType: "Single Family Residence",
+            yearBuilt: 2018
+          },
+          message: "Property facts found."
+        }
+      })
+    });
+  });
+
   await page.goto("/dashboard/listings", { waitUntil: "domcontentloaded" });
   await expect(page.getByTestId("dashboard-ready")).toHaveText("ready");
   await expect(page.getByText("123 Maple Street")).toBeVisible();
-  const managedAddress = `24 ${suffix} Listing Lane`;
-  await page.getByLabel("Address").fill(managedAddress);
+  await page.getByLabel("Address").fill(managedAddress.slice(0, 10));
+  await expect(page.getByRole("option", { name: new RegExp(managedAddress) })).toBeVisible();
+  await page.getByLabel("Address").press("Enter");
+  await expect(page.getByText("Property facts found.")).toBeVisible();
+  await expect(page.getByLabel("Address")).toHaveValue(suggestedManagedAddress);
+  await expect(page.getByLabel("Beds")).toHaveValue("4");
+  await expect(page.getByLabel("Baths")).toHaveValue("3");
+  await expect(page.getByLabel("Sqft")).toHaveValue("2100");
+  await expect(page.getByLabel("Property type")).toHaveValue("house");
   await page.getByLabel("Price").fill("765000");
-  await page.getByLabel("Beds").fill("4");
-  await page.getByLabel("Baths").fill("3");
-  await page.getByLabel("Sqft").fill("2100");
   await page.getByLabel("Neighborhood").fill("Berkeley");
-  await page.getByLabel("Property type").fill("house");
   await page.getByLabel("Features").fill("yard, home office");
   await page.getByLabel("Agent note").fill("Fresh dashboard-managed listing.");
   await page.getByRole("button", { name: "Add listing" }).click();
-  const managedCard = page.locator("article").filter({ hasText: managedAddress });
+  const managedCard = page.locator("article").filter({ hasText: suggestedManagedAddress });
   await expect(managedCard).toBeVisible();
   await managedCard.getByRole("button", { name: "Edit listing" }).click();
   const editCard = page.locator("article").filter({ has: page.getByRole("button", { name: "Save listing" }) });
@@ -144,12 +195,12 @@ test("agent can publish setup, receive a lead, and work it from the dashboard", 
   await editCard.getByLabel("Neighborhood").fill("Sunnyside");
   await editCard.getByLabel("Agent note").fill("Updated from the dashboard.");
   await editCard.getByRole("button", { name: "Save listing" }).click();
-  const updatedCard = page.locator("article").filter({ hasText: managedAddress });
+  const updatedCard = page.locator("article").filter({ hasText: suggestedManagedAddress });
   await expect(updatedCard.getByText("$795k")).toBeVisible();
   await expect(updatedCard.getByText("Updated from the dashboard.")).toBeVisible();
   await updatedCard.getByRole("button", { name: "Delete listing" }).click();
   await updatedCard.getByRole("button", { name: "Confirm delete" }).click();
-  await expect(page.getByText(managedAddress)).not.toBeVisible();
+  await expect(page.locator("article").filter({ hasText: suggestedManagedAddress })).not.toBeVisible();
 
   await page.goto(`/${slug}/seller`, { waitUntil: "domcontentloaded" });
   await expect(page.getByTestId("seller-form-ready")).toHaveText("ready");

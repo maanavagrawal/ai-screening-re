@@ -38,3 +38,4 @@
 - Client-supplied `lead_id` is never enough to authorize buyer mutations or analytics side effects. Verify the lead belongs to the resolved agent and the current buyer session before logging lead-bound events, sending verification SMS, requesting showings, or recomputing lead temperature.
 - Routes under `/api/internal/*` need explicit internal authentication in production. Local dev can remain ergonomic, but production should fail closed if `INTERNAL_API_SECRET` is absent.
 - ATTOM and Google Places are core product providers, not nice-to-have fallbacks. Runtime feature routes and health checks should fail loudly when `ATTOM_API_KEY` or `GOOGLE_PLACES_API_KEY` is missing; keep fixture helpers explicit in tests only.
+- Dashboard listing entry should make provider enrichment feel one-step: address autocomplete should offer keyboard selection, selected addresses should immediately run property lookup, and draft resets must clear stale lookup previews.

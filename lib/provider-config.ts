@@ -37,7 +37,7 @@ export function providerErrorMessage(error: unknown, fallback: string) {
 export function providerConfigStatus() {
   const required = [
     ["ATTOM_API_KEY", "listing property lookup"],
-    ["GOOGLE_PLACES_API_KEY", "buyer area autocomplete"]
+    ["GOOGLE_PLACES_API_KEY", "buyer area and listing address autocomplete"]
   ] as const;
   const missing = required
     .filter(([envVar]) => !process.env[envVar]?.trim())

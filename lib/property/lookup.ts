@@ -13,9 +13,81 @@ export type PropertyLookupResult = Pick<
   message: string;
 };
 
+export type AddressSuggestion = {
+  label: string;
+  placeId?: string | null;
+  secondaryLabel?: string | null;
+  source: "google_places" | "manual";
+};
+
 type AttomProperty = Record<string, unknown>;
+type GoogleAddressSuggestion = {
+  placePrediction?: {
+    placeId?: string;
+    text?: { text?: string };
+    structuredFormat?: {
+      mainText?: { text?: string };
+      secondaryText?: { text?: string };
+    };
+  };
+};
 
 const ATTOM_BASE_URL = "https://api.gateway.attomdata.com/propertyapi/v1.0.0/property/basicprofile";
+const GOOGLE_PLACES_AUTOCOMPLETE_URL = "https://places.googleapis.com/v1/places:autocomplete";
+
+export async function searchListingAddressSuggestions(query: string): Promise<AddressSuggestion[]> {
+  const cleanQuery = query.trim();
+  if (cleanQuery.length < 3) return [];
+
+  const apiKey = requiredProviderEnv("GOOGLE_PLACES_API_KEY", "listing address autocomplete");
+  const response = await fetch(GOOGLE_PLACES_AUTOCOMPLETE_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Goog-Api-Key": apiKey,
+      "X-Goog-FieldMask":
+        "suggestions.placePrediction.placeId,suggestions.placePrediction.text,suggestions.placePrediction.structuredFormat"
+    },
+    body: JSON.stringify({
+      input: cleanQuery,
+      languageCode: "en",
+      regionCode: "us",
+      includedPrimaryTypes: ["street_address", "premise", "subpremise"]
+    }),
+    cache: "no-store"
+  });
+
+  if (!response.ok) {
+    throw new ProviderRequestError("Google Places", `Google Places address lookup failed with ${response.status}`);
+  }
+
+  const payload = (await response.json()) as { suggestions?: GoogleAddressSuggestion[] };
+  const suggestions: AddressSuggestion[] = [];
+  const seen = new Set<string>();
+
+  for (const suggestion of payload.suggestions ?? []) {
+    const place = suggestion.placePrediction;
+    const label =
+      place?.text?.text ??
+      [place?.structuredFormat?.mainText?.text, place?.structuredFormat?.secondaryText?.text]
+        .filter(Boolean)
+        .join(", ");
+    if (!label || seen.has(normalizeAddressSuggestion(label))) continue;
+    seen.add(normalizeAddressSuggestion(label));
+    suggestions.push({
+      label,
+      placeId: place?.placeId ?? null,
+      secondaryLabel: place?.structuredFormat?.secondaryText?.text ?? null,
+      source: "google_places"
+    });
+  }
+
+  if (!suggestions.length) {
+    suggestions.push({ label: cleanQuery, source: "manual" });
+  }
+
+  return suggestions.slice(0, 5);
+}
 
 export async function lookupPropertyByAddress(address: string): Promise<PropertyLookupResult> {
   const cleanAddress = address.trim();
@@ -186,4 +258,8 @@ function valueAt(input: Record<string, unknown>, path: string) {
 
 function removeEmpty<T extends Record<string, unknown>>(input: T): T {
   return Object.fromEntries(Object.entries(input).filter(([, value]) => value !== null && value !== undefined && value !== "")) as T;
+}
+
+function normalizeAddressSuggestion(value: string) {
+  return value.trim().toLowerCase().replace(/\s+/g, " ");
 }

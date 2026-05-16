@@ -2,6 +2,24 @@
 
 ## Priority 1
 
+- [x] Add fast dashboard listing address suggestions and one-step enrichment
+  - Goal: dashboard listing entry should show address suggestions while typing, let Enter select the top match, and populate property facts without a second "Use facts" click.
+  - Root cause hypothesis:
+    - [x] The dashboard listing address field is a plain input with no autocomplete route/UI, and `Lookup facts` currently only fetches a preview result that requires a separate `Use facts` action.
+  - Plan:
+    - [x] Add an authenticated address suggestion path backed by Google Places Autocomplete for address-like predictions.
+    - [x] Add a dropdown to dashboard listing forms with keyboard Enter selection.
+    - [x] Make suggestion selection and the existing lookup button apply property facts immediately.
+    - [x] Add regression coverage for the suggestion API/UI and dashboard flow.
+    - [x] Verify with typecheck, tests, e2e, and build.
+  - Review:
+    - Added `/api/listing-address-suggestions`, authenticated by the setup/dashboard user cookie, backed by Google Places address predictions.
+    - Dashboard listing address fields now open a Google-attributed suggestion dropdown while typing; pressing Enter selects the first suggestion and immediately runs the ATTOM property lookup.
+    - The existing `Lookup facts` button now applies returned facts immediately instead of requiring a second `Use facts` click.
+    - Property fact application now overwrites default bed/bath/sqft/type values from provider data and clears stale lookup previews when the add-listing draft resets.
+    - Updated provider docs/status wording so `GOOGLE_PLACES_API_KEY` covers buyer area and listing address autocomplete.
+    - Verification: `npm run typecheck`, focused suggestion/provider tests, `./scripts/test.sh` (lint, typecheck, 101 unit tests), `./scripts/e2e.sh` (12 desktop/mobile Playwright tests), and `npm run build` passed. E2E needed local-server escalation after sandbox bind restrictions.
+
 - [x] Let agents edit and AI-generate their profile headline
   - Goal: agents should be able to manually edit the buyer-facing profile headline, while still having an AI option to generate a draft from their bio/market context.
   - Plan:
