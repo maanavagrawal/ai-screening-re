@@ -2,6 +2,25 @@
 
 ## Priority 1
 
+- [x] Redesign setup listing entry around address-first enrichment
+  - Goal: setup listing cards should let agents enter/select an address first, automatically pull property facts, then reveal the common listing fields to confirm.
+  - Design review findings:
+    - [x] The old first control was a media URL input, even though social links cannot provide property facts.
+    - [x] Property facts was visually separated from the address field it depended on, which made errors such as `ATTOM lookup failed with 400` feel mysterious.
+    - [x] All manual fields were visible at once, creating a long form before the agent had chosen the fastest entry path.
+  - Plan:
+    - [x] Move address autocomplete into the top property facts section and make suggestion selection run lookup/apply automatically.
+    - [x] Keep media link and text autofill as secondary helpers below the address-first path.
+    - [x] Reveal price/neighborhood/beds/baths/sqft/video/features/notes after address selection, lookup, or text extraction.
+    - [x] Add regression coverage for setup address suggestions unlocking and filling listing fields.
+    - [x] Run typecheck, tests, e2e, build, and a design review pass.
+  - Review:
+    - Design review verdict: the listing editor now has a clear primary action (`Start with the address`), keeps optional media/text helpers secondary, and progressively reveals the confirmation fields only after address lookup or extracted details.
+    - Address autocomplete was added to setup listing cards using the same provider-backed suggestion route as dashboard listings. Selecting a suggestion automatically runs property lookup and applies ATTOM facts without a separate `Use these facts` step.
+    - The media link helper remains available for Instagram/TikTok/MLS/mp4, and text autofill remains available for captions, public remarks, flyers, or notes.
+    - Added a setup hydration-ready marker and a desktop/mobile Playwright regression that verifies address suggestions reveal and fill neighborhood, beds, baths, sqft, and property type.
+    - Verification: `npm run typecheck`, focused setup listing Playwright regression, `./scripts/test.sh` (lint, typecheck, 105 unit tests), `./scripts/e2e.sh` (14 desktop/mobile Playwright tests), `npm run build`, and `git diff --check` passed. gstack `/browse` is still not built in this workspace, so live design verification used Playwright rather than the gstack browser binary.
+
 - [x] Fix buyer budget range, city selection identity, and social-media card layout
   - Goal: buyer-side intake and match cards should handle high-price markets, select only the clicked location suggestion, and avoid overlapping Instagram/TikTok CTAs with no-media copy.
   - Root cause hypothesis:

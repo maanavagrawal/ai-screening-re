@@ -1,7 +1,7 @@
 "use client";
 
 /* eslint-disable @next/next/no-img-element */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useDropzone } from "react-dropzone";
 import QRCode from "qrcode";
@@ -23,7 +23,7 @@ import { DEAL_BREAKERS, MUST_HAVES } from "@/lib/constants";
 import { cn, formatCurrency } from "@/lib/formatting";
 import { clearedListingEnrichment } from "@/lib/listing-enrichment";
 import type { AgentSetupDraftData, ListingPayload } from "@/lib/types";
-import type { PropertyLookupResult } from "@/lib/property/lookup";
+import type { AddressSuggestion, PropertyLookupResult } from "@/lib/property/lookup";
 
 const steps = ["welcome", "basics", "voice", "listings", "neighborhoods", "phone", "link", "simulation"] as const;
 type Step = (typeof steps)[number];
@@ -59,12 +59,14 @@ export function SetupWizard({
   const [qr, setQr] = useState<string | null>(null);
   const [slugAvailable, setSlugAvailable] = useState<boolean | null>(null);
   const [micSupported, setMicSupported] = useState(false);
+  const [clientReady, setClientReady] = useState(false);
   const [origin, setOrigin] = useState(process.env.NEXT_PUBLIC_APP_URL || "https://yourapp.com");
 
   const stepIndex = Math.max(0, steps.indexOf(step));
   const fullUrl = `${origin.replace(/\/$/, "")}/${draft.slug || slugFromName(draft.name) || "your-link"}`;
 
   useEffect(() => {
+    setClientReady(true);
     setMicSupported(typeof window !== "undefined" && ("SpeechRecognition" in window || "webkitSpeechRecognition" in window));
     if (!process.env.NEXT_PUBLIC_APP_URL) setOrigin(window.location.origin);
   }, []);
@@ -102,6 +104,7 @@ export function SetupWizard({
 
   return (
     <main className="min-h-svh lg:grid lg:grid-cols-[minmax(0,1fr)_440px]">
+      <span className="sr-only" data-testid="setup-ready">{clientReady ? "ready" : "loading"}</span>
       <section className="flex min-h-svh flex-col px-5 py-6 lg:px-10">
         <div className="mx-auto flex w-full max-w-xl items-center gap-3">
           {step !== "welcome" ? (
@@ -691,22 +694,79 @@ function ListingEditor(props: {
 }) {
   const [url, setUrl] = useState(props.listing.sourceUrl ?? "");
   const [sourceText, setSourceText] = useState(props.listing.sourceText ?? "");
+  const [addressInput, setAddressInput] = useState(props.listing.address ?? "");
+  const lastSyncedAddress = useRef(props.listing.address ?? "");
   const [propertyBusy, setPropertyBusy] = useState(false);
   const [propertyResult, setPropertyResult] = useState<PropertyLookupResult | null>(null);
+  const [addressSuggestions, setAddressSuggestions] = useState<AddressSuggestion[]>([]);
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
+  const [suggestionsBusy, setSuggestionsBusy] = useState(false);
+  const [detailsUnlocked, setDetailsUnlocked] = useState(() => listingDetailsUnlocked(props.listing));
 
-  async function lookupProperty() {
-    if (!props.listing.address) return;
+  useEffect(() => {
+    const nextAddress = props.listing.address ?? "";
+    if (nextAddress === lastSyncedAddress.current) return;
+    lastSyncedAddress.current = nextAddress;
+    setAddressInput(nextAddress);
+  }, [props.listing.address]);
+
+  useEffect(() => {
+    if (listingDetailsUnlocked(props.listing)) setDetailsUnlocked(true);
+  }, [props.listing]);
+
+  useEffect(() => {
+    if (!suggestionsOpen) return;
+    const query = addressInput.trim();
+    if (query.length < 3) {
+      setAddressSuggestions([]);
+      setSuggestionsBusy(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    const timeout = window.setTimeout(async () => {
+      setSuggestionsBusy(true);
+      try {
+        const response = await fetch("/api/listing-address-suggestions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ query }),
+          signal: controller.signal
+        });
+        const json = (await response.json().catch(() => null)) as { suggestions?: AddressSuggestion[] } | null;
+        if (!controller.signal.aborted) {
+          setAddressSuggestions(response.ok ? (json?.suggestions ?? []) : []);
+        }
+      } catch {
+        if (!controller.signal.aborted) setAddressSuggestions([]);
+      } finally {
+        if (!controller.signal.aborted) setSuggestionsBusy(false);
+      }
+    }, 180);
+
+    return () => {
+      controller.abort();
+      window.clearTimeout(timeout);
+    };
+  }, [addressInput, suggestionsOpen]);
+
+  async function lookupAndApplyProperty(address = addressInput) {
+    const cleanAddress = address.trim();
+    if (!cleanAddress) return;
+    setDetailsUnlocked(true);
     setPropertyBusy(true);
+    setPropertyResult(null);
+    await commitAddress(cleanAddress);
     try {
       const response = await fetch("/api/listing-property-search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ address: props.listing.address })
+        body: JSON.stringify({ address: cleanAddress })
       });
       const json = (await response.json().catch(() => null)) as { result?: PropertyLookupResult; error?: string } | null;
       if (response.ok && json?.result) {
         setPropertyResult(json.result);
-        await props.patch(props.index, { propertyLookupMessage: json.result.message });
+        await applyPropertyFacts(json.result, cleanAddress);
       } else {
         await props.patch(props.index, { propertyLookupMessage: json?.error ?? "Could not look up property facts." });
       }
@@ -717,16 +777,33 @@ function ListingEditor(props: {
     }
   }
 
-  async function updateAddress(address: string) {
+  function updateAddress(address: string) {
+    setAddressInput(address);
     setPropertyResult(null);
+    setAddressSuggestions([]);
+    setSuggestionsOpen(address.trim().length >= 3);
+    setDetailsUnlocked((current) => current && listingDetailsUnlocked(props.listing));
+  }
+
+  async function commitAddress(address: string) {
+    const cleanAddress = address.trim();
+    lastSyncedAddress.current = cleanAddress;
     await props.patch(props.index, {
-      address,
+      address: cleanAddress,
       ...clearedListingEnrichment(),
       propertyLookupMessage: undefined
     });
   }
 
-  async function applyPropertyFacts(result: PropertyLookupResult) {
+  async function selectAddressSuggestion(suggestion: AddressSuggestion) {
+    setAddressInput(suggestion.label);
+    setSuggestionsOpen(false);
+    setAddressSuggestions([]);
+    setDetailsUnlocked(true);
+    await lookupAndApplyProperty(suggestion.label);
+  }
+
+  async function applyPropertyFacts(result: PropertyLookupResult, fallbackAddress = addressInput) {
     const facts = result.propertyFacts ?? {};
     await props.patch(props.index, {
       attomId: result.attomId ?? null,
@@ -736,7 +813,8 @@ function ListingEditor(props: {
       normalizedAddress: result.normalizedAddress,
       propertyFacts: result.propertyFacts,
       propertyOverrideFields: [],
-      address: result.normalizedAddress?.label ?? props.listing.address,
+      propertyLookupMessage: result.message,
+      address: result.normalizedAddress?.label ?? fallbackAddress,
       neighborhood: props.listing.neighborhood || result.normalizedAddress?.city || undefined,
       beds: props.listing.beds ?? facts.beds ?? undefined,
       baths: props.listing.baths ?? facts.baths ?? undefined,
@@ -745,94 +823,246 @@ function ListingEditor(props: {
     });
   }
 
+  async function fillFromText() {
+    setDetailsUnlocked(true);
+    await props.extractDetails(props.index, sourceText);
+  }
+
+  const showDetails = detailsUnlocked || listingDetailsUnlocked(props.listing);
+
   return (
-    <div className="rounded-2xl border border-warm-border bg-white p-4">
-      <p className="mb-3 text-sm font-semibold">Listing {props.index + 1}</p>
-      <div className="flex gap-2">
-        <input className="h-12 flex-1 rounded-2xl border-warm-border px-3" value={url} onChange={(event) => setUrl(event.target.value)} placeholder="Paste Instagram, TikTok, MLS, or mp4 link" />
-        <Button variant="secondary" disabled={!url || props.busy} onClick={() => props.extract(props.index, url)}>Use</Button>
-      </div>
-      {props.listing.extractMessage ? <p className="mt-2 text-sm text-warm-muted">{props.listing.extractMessage}</p> : null}
-      <div className="mt-4 rounded-2xl border border-warm-border bg-[#FAFAF7] p-3">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-warm-muted">Property facts</p>
-            <p className="mt-1 text-sm text-warm-muted">Lookup public property facts from the listing address.</p>
-          </div>
-          <Button
-            className="gap-2"
-            variant="secondary"
-            disabled={!props.listing.address || propertyBusy}
-            onClick={lookupProperty}
-          >
-            <Search size={16} />
-            {propertyBusy ? "Looking..." : "Lookup"}
-          </Button>
+    <div className="overflow-hidden rounded-2xl border border-warm-border bg-white">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-warm-border px-4 py-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-warm-muted">Listing {props.index + 1}</p>
+          <h2 className="mt-1 font-serif text-2xl">Start with the address</h2>
         </div>
-        {props.listing.propertyLookupMessage ? <p className="mt-2 text-sm text-warm-muted">{props.listing.propertyLookupMessage}</p> : null}
-        {propertyResult ? (
-          <div className="mt-3 rounded-xl border border-warm-border bg-white p-3 text-sm">
-            <p className="font-semibold">{propertyResult.normalizedAddress?.label ?? props.listing.address}</p>
-            <p className="mt-1 text-warm-muted">{propertyFactLine(propertyResult)}</p>
-            <Button className="mt-3 w-full" variant="secondary" onClick={() => applyPropertyFacts(propertyResult)}>
-              Use these facts
+        <span className="rounded-full bg-[#FAFAF7] px-3 py-2 text-xs font-semibold text-warm-muted">
+          {showDetails ? "Details ready" : "Address first"}
+        </span>
+      </div>
+      <div className="space-y-5 p-4">
+        <section aria-label={`Listing ${props.index + 1} property facts`}>
+          <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+            <SetupAddressSuggestionInput
+              value={addressInput}
+              suggestions={addressSuggestions}
+              suggestionsOpen={suggestionsOpen}
+              suggestionsBusy={suggestionsBusy}
+              onChange={updateAddress}
+              onFocus={() => setSuggestionsOpen(addressInput.trim().length >= 3)}
+              onBlur={() => {
+                void commitAddress(addressInput);
+                window.setTimeout(() => setSuggestionsOpen(false), 120);
+              }}
+              onEnterFirstSuggestion={() => {
+                if (addressSuggestions[0]) void selectAddressSuggestion(addressSuggestions[0]);
+              }}
+              onSelect={(suggestion) => void selectAddressSuggestion(suggestion)}
+            />
+            <Button
+              className="gap-2 self-end"
+              variant="secondary"
+              disabled={!addressInput.trim() || propertyBusy}
+              onClick={() => void lookupAndApplyProperty()}
+            >
+              <Search size={16} />
+              {propertyBusy ? "Looking..." : "Lookup facts"}
             </Button>
           </div>
+          <p className="mt-2 text-sm text-warm-muted">
+            Select an address to pull public facts, then confirm price, beds, baths, square feet, and neighborhood.
+          </p>
+          {props.listing.propertyLookupMessage ? <p className="mt-2 text-sm text-warm-muted">{props.listing.propertyLookupMessage}</p> : null}
+          {propertyResult ? (
+            <div className="mt-3 rounded-xl border border-warm-border bg-[#FAFAF7] p-3 text-sm">
+              <p className="font-semibold">{propertyResult.normalizedAddress?.label ?? addressInput}</p>
+              <p className="mt-1 text-warm-muted">{propertyFactLine(propertyResult)}</p>
+            </div>
+          ) : null}
+        </section>
+
+        <section className="border-t border-warm-border pt-5" aria-label={`Listing ${props.index + 1} optional helpers`}>
+          <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+            <label className="block">
+              <span className="text-xs font-semibold text-warm-muted">Optional media link</span>
+              <input
+                className="mt-1 h-12 w-full rounded-xl border-warm-border px-3 text-sm"
+                value={url}
+                onChange={(event) => setUrl(event.target.value)}
+                placeholder="Instagram, TikTok, MLS, or mp4 link"
+              />
+            </label>
+            <Button className="self-end" variant="secondary" disabled={!url || props.busy} onClick={() => props.extract(props.index, url)}>Use</Button>
+          </div>
+          {props.listing.extractMessage ? <p className="mt-2 text-sm text-warm-muted">{props.listing.extractMessage}</p> : null}
+          <div className="mt-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-warm-muted">Autofill from text</p>
+            <textarea
+              className="mt-2 min-h-24 w-full rounded-xl border-warm-border bg-white p-3 text-sm leading-6"
+              value={sourceText}
+              onChange={(event) => {
+                setSourceText(event.target.value);
+                props.patch(props.index, { sourceText: event.target.value });
+              }}
+              placeholder="Paste public remarks, an Instagram caption, flyer copy, or notes. Example: $725k, 3 bed, 2 bath, 1,850 sqft, East Austin, fenced yard..."
+            />
+            <Button
+              className="mt-3 w-full"
+              variant="secondary"
+              disabled={sourceText.trim().length < 20 || props.detailsBusy}
+              onClick={() => void fillFromText()}
+            >
+              {props.detailsBusy ? "Reading..." : "Fill fields from text"}
+            </Button>
+            {props.listing.extractDetailsMessage ? <p className="mt-2 text-sm text-warm-muted">{props.listing.extractDetailsMessage}</p> : null}
+          </div>
+        </section>
+
+        {showDetails ? (
+          <section className="border-t border-warm-border pt-5" aria-label={`Listing ${props.index + 1} details`}>
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-warm-muted">Confirm listing details</p>
+                <p className="mt-1 text-sm text-warm-muted">Edit anything the lookup or text fill missed.</p>
+              </div>
+              {props.listing.price ? <p className="shrink-0 text-sm font-semibold text-warm-muted">{formatCurrency(props.listing.price)}</p> : null}
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <SmallInput label="Price" value={props.listing.price ? String(props.listing.price) : ""} onChange={(price) => props.patch(props.index, { price: Number(price.replace(/\D/g, "")) || undefined })} />
+              <SmallInput label="Neighborhood" value={props.listing.neighborhood ?? ""} onChange={(neighborhood) => props.patch(props.index, { neighborhood })} />
+              <SmallInput label="Beds" value={props.listing.beds != null ? String(props.listing.beds) : ""} onChange={(beds) => props.patch(props.index, { beds: Number(beds) || undefined })} />
+              <SmallInput label="Baths" value={props.listing.baths != null ? String(props.listing.baths) : ""} onChange={(baths) => props.patch(props.index, { baths: Number(baths) || undefined })} />
+              <SmallInput label="Sqft" value={props.listing.sqft ? String(props.listing.sqft) : ""} onChange={(sqft) => props.patch(props.index, { sqft: Number(sqft) || null })} />
+              <SmallInput
+                label="Video URL"
+                value={props.listing.videoUrl ?? ""}
+                onChange={(videoUrl) =>
+                  props.patch(props.index, {
+                    videoUrl,
+                    videoSource: videoUrl.trim() ? (videoUrl.endsWith(".mp4") ? "mp4" : props.listing.videoSource) : null
+                  })
+                }
+              />
+              <SmallInput label="Property type" value={props.listing.property_type ?? ""} onChange={(property_type) => props.patch(props.index, { property_type })} className="sm:col-span-2" />
+            </div>
+            <ChipEditor title="Features" options={MUST_HAVES} selected={props.listing.features ?? []} onChange={(features) => props.patch(props.index, { features })} />
+            <ChipEditor title="Deal-breaker flags" options={DEAL_BREAKERS} selected={props.listing.dealBreakerFlags ?? []} onChange={(dealBreakerFlags) => props.patch(props.index, { dealBreakerFlags })} />
+            <textarea
+              className="mt-4 min-h-20 w-full rounded-2xl border-warm-border p-3"
+              value={props.listing.agent_note ?? ""}
+              onChange={(event) => props.patch(props.index, { agent_note: event.target.value })}
+              placeholder="Your take on this property"
+            />
+            <label className="mt-3 flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={props.listing.isPocket ?? false} onChange={(event) => props.patch(props.index, { isPocket: event.target.checked })} />
+              Off-market or pocket listing
+            </label>
+          </section>
         ) : null}
       </div>
-      <div className="mt-4 rounded-2xl border border-warm-border bg-[#FAFAF7] p-3">
-        <p className="text-xs font-semibold uppercase tracking-wide text-warm-muted">Autofill from text</p>
-        <textarea
-          className="mt-2 min-h-28 w-full rounded-xl border-warm-border bg-white p-3 text-sm leading-6"
-          value={sourceText}
-          onChange={(event) => {
-            setSourceText(event.target.value);
-            props.patch(props.index, { sourceText: event.target.value });
-          }}
-          placeholder="Paste MLS public remarks, an Instagram caption, flyer copy, or a quick notes block. Example: 123 Maple St, $725k, 3 bed, 2 bath, 1,850 sqft, East Austin, fenced yard..."
-        />
-        <Button
-          className="mt-3 w-full"
-          variant="secondary"
-          disabled={sourceText.trim().length < 20 || props.detailsBusy}
-          onClick={() => props.extractDetails(props.index, sourceText)}
-        >
-          {props.detailsBusy ? "Reading..." : "Fill fields from text"}
-        </Button>
-        {props.listing.extractDetailsMessage ? <p className="mt-2 text-sm text-warm-muted">{props.listing.extractDetailsMessage}</p> : null}
-      </div>
-      <div className="mt-4 grid gap-3 sm:grid-cols-2">
-        <SmallInput label="Address" value={props.listing.address ?? ""} onChange={(address) => void updateAddress(address)} className="sm:col-span-2" />
-        <SmallInput label="Price" value={props.listing.price ? String(props.listing.price) : ""} onChange={(price) => props.patch(props.index, { price: Number(price.replace(/\D/g, "")) || undefined })} />
-        <SmallInput label="Neighborhood" value={props.listing.neighborhood ?? ""} onChange={(neighborhood) => props.patch(props.index, { neighborhood })} />
-        <SmallInput label="Beds" value={props.listing.beds != null ? String(props.listing.beds) : ""} onChange={(beds) => props.patch(props.index, { beds: Number(beds) || undefined })} />
-        <SmallInput label="Baths" value={props.listing.baths != null ? String(props.listing.baths) : ""} onChange={(baths) => props.patch(props.index, { baths: Number(baths) || undefined })} />
-        <SmallInput label="Sqft" value={props.listing.sqft ? String(props.listing.sqft) : ""} onChange={(sqft) => props.patch(props.index, { sqft: Number(sqft) || null })} />
-        <SmallInput
-          label="Video URL"
-          value={props.listing.videoUrl ?? ""}
-          onChange={(videoUrl) =>
-            props.patch(props.index, {
-              videoUrl,
-              videoSource: videoUrl.trim() ? (videoUrl.endsWith(".mp4") ? "mp4" : props.listing.videoSource) : null
-            })
-          }
-        />
-      </div>
-      <ChipEditor title="Features" options={MUST_HAVES} selected={props.listing.features ?? []} onChange={(features) => props.patch(props.index, { features })} />
-      <ChipEditor title="Deal-breaker flags" options={DEAL_BREAKERS} selected={props.listing.dealBreakerFlags ?? []} onChange={(dealBreakerFlags) => props.patch(props.index, { dealBreakerFlags })} />
-      <textarea
-        className="mt-4 min-h-20 w-full rounded-2xl border-warm-border p-3"
-        value={props.listing.agent_note ?? ""}
-        onChange={(event) => props.patch(props.index, { agent_note: event.target.value })}
-        placeholder="Your take on this property"
-      />
-      <label className="mt-3 flex items-center gap-2 text-sm">
-        <input type="checkbox" checked={props.listing.isPocket ?? false} onChange={(event) => props.patch(props.index, { isPocket: event.target.checked })} />
-        Off-market or pocket listing
-      </label>
-      {props.listing.price ? <p className="mt-3 text-sm text-warm-muted">Preview price: {formatCurrency(props.listing.price)}</p> : null}
     </div>
+  );
+}
+
+function SetupAddressSuggestionInput({
+  value,
+  suggestions,
+  suggestionsOpen,
+  suggestionsBusy,
+  onChange,
+  onFocus,
+  onBlur,
+  onEnterFirstSuggestion,
+  onSelect
+}: {
+  value: string;
+  suggestions: AddressSuggestion[];
+  suggestionsOpen: boolean;
+  suggestionsBusy: boolean;
+  onChange: (value: string) => void;
+  onFocus: () => void;
+  onBlur: () => void;
+  onEnterFirstSuggestion: () => void;
+  onSelect: (suggestion: AddressSuggestion) => void;
+}) {
+  const inputId = useId();
+  const listboxId = `${inputId}-suggestions`;
+  const showDropdown = suggestionsOpen && (suggestionsBusy || suggestions.length > 0);
+  const hasGoogleSuggestions = suggestions.some((suggestion) => suggestion.source === "google_places");
+
+  return (
+    <div className="relative block">
+      <label className="text-xs font-semibold text-warm-muted" htmlFor={inputId}>Property address</label>
+      <input
+        id={inputId}
+        className="mt-1 h-12 w-full rounded-xl border-warm-border px-3 text-sm"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        onFocus={onFocus}
+        onBlur={onBlur}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" && suggestionsOpen && suggestions.length > 0) {
+            event.preventDefault();
+            onEnterFirstSuggestion();
+          }
+        }}
+        role="combobox"
+        aria-expanded={showDropdown}
+        aria-controls={listboxId}
+        aria-autocomplete="list"
+        aria-label="Address"
+        placeholder="Start typing an address"
+      />
+      {showDropdown ? (
+        <div
+          id={listboxId}
+          className="absolute left-0 right-0 top-full z-30 mt-2 overflow-hidden rounded-xl border border-warm-border bg-white text-sm shadow-soft"
+          role="listbox"
+        >
+          {suggestionsBusy && !suggestions.length ? (
+            <p className="px-3 py-3 text-warm-muted">Finding addresses...</p>
+          ) : null}
+          {suggestions.map((suggestion) => (
+            <button
+              key={`${suggestion.source}:${suggestion.placeId ?? suggestion.label}`}
+              className="block w-full border-b border-warm-border px-3 py-3 text-left last:border-b-0 hover:bg-[#FAFAF7]"
+              type="button"
+              role="option"
+              aria-selected="false"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => onSelect(suggestion)}
+            >
+              <span className="block font-semibold">{suggestion.label}</span>
+              {suggestion.secondaryLabel && !suggestion.label.includes(suggestion.secondaryLabel) ? (
+                <span className="mt-1 block text-xs text-warm-muted">{suggestion.secondaryLabel}</span>
+              ) : null}
+            </button>
+          ))}
+          {hasGoogleSuggestions ? (
+            <p className="bg-[#FAFAF7] px-3 py-2 text-right text-[11px] font-semibold text-warm-muted">Powered by Google</p>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function listingDetailsUnlocked(listing: WizardListing) {
+  return Boolean(
+    listing.price ||
+      listing.neighborhood ||
+      listing.beds != null ||
+      listing.baths != null ||
+      listing.sqft ||
+      listing.property_type ||
+      listing.videoUrl ||
+      listing.features?.length ||
+      listing.dealBreakerFlags?.length ||
+      listing.agent_note ||
+      listing.propertyLookupMessage ||
+      listing.propertyDataSource ||
+      listing.normalizedAddress
   );
 }
 

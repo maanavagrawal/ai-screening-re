@@ -31,6 +31,85 @@ test("root domain routes buyers, sellers, and agents by intent", async ({ page }
   await expect(page.getByText("We could not find that agent link.")).toBeVisible();
 });
 
+test("setup listing entry starts with address lookup and reveals details", async ({ page }, testInfo) => {
+  const suffix = `${testInfo.project.name}-${Date.now()}`.toLowerCase().replace(/[^a-z0-9-]/g, "-");
+  const managedAddress = `120 ${suffix} Larch Road`;
+  const suggestedAddress = `${managedAddress}, San Ramon, CA 94582`;
+
+  await page.goto("/signup");
+  await page.getByLabel("Email").fill(`setup-listing-${suffix}@example.com`);
+  await page.getByRole("button", { name: "Send magic link" }).click();
+  await page.getByRole("button", { name: "Continue" }).click();
+  await expect(page.getByText("In 10 minutes")).toBeVisible();
+
+  await page.route("**/api/listing-address-suggestions", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        suggestions: [
+          {
+            label: suggestedAddress,
+            placeId: `setup-place-${suffix}`,
+            secondaryLabel: "San Ramon, CA 94582",
+            source: "google_places"
+          }
+        ]
+      })
+    });
+  });
+  await page.route("**/api/listing-property-search", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        result: {
+          attomId: `setup-attom-${suffix}`,
+          propertyDataSource: "attom",
+          propertyEnrichedAt: "2026-05-16T00:00:00.000Z",
+          propertyMatchConfidence: 0.94,
+          normalizedAddress: {
+            line1: managedAddress,
+            city: "San Ramon",
+            state: "CA",
+            postalCode: "94582",
+            label: suggestedAddress
+          },
+          propertyFacts: {
+            beds: 4,
+            baths: 3,
+            sqft: 2650,
+            propertyType: "Single Family Residence",
+            yearBuilt: 2019
+          },
+          message: "Property facts found."
+        }
+      })
+    });
+  });
+
+  await page.goto("/setup/listings", { waitUntil: "domcontentloaded" });
+  await expect(page.getByTestId("setup-ready")).toHaveText("ready");
+  await expect(page.getByRole("heading", { name: "Add 3 of your recent listings." })).toBeVisible();
+  await expect(page.getByLabel("Listing 1 details")).not.toBeVisible();
+
+  const propertyFacts = page.getByLabel("Listing 1 property facts");
+  await propertyFacts.getByLabel("Address").fill(managedAddress.slice(0, 8));
+  await expect(page.getByRole("option", { name: new RegExp(managedAddress) })).toBeVisible();
+  await page.getByRole("option", { name: new RegExp(managedAddress) }).click();
+
+  await expect(propertyFacts.getByText("Property facts found.")).toBeVisible();
+  const details = page.getByLabel("Listing 1 details");
+  await expect(details).toBeVisible();
+  await expect(details.getByLabel("Neighborhood")).toHaveValue("San Ramon");
+  await expect(details.getByLabel("Beds")).toHaveValue("4");
+  await expect(details.getByLabel("Baths")).toHaveValue("3");
+  await expect(details.getByLabel("Sqft")).toHaveValue("2650");
+  await expect(details.getByLabel("Property type")).toHaveValue("house");
+  await expect(page.getByText("Optional media link").first()).toBeVisible();
+  await expect(page.getByText("Autofill from text").first()).toBeVisible();
+});
+
 test("agent can publish setup, receive a lead, and work it from the dashboard", async ({ page }, testInfo) => {
   test.setTimeout(90_000);
   const suffix = `${testInfo.project.name}-${Date.now()}`.toLowerCase().replace(/[^a-z0-9-]/g, "-");
