@@ -110,7 +110,34 @@ test("agent can publish setup, receive a lead, and work it from the dashboard", 
   await expect(page.getByText("Instagram bio")).toBeVisible();
 
   await page.goto("/dashboard/listings", { waitUntil: "domcontentloaded" });
+  await expect(page.getByTestId("dashboard-ready")).toHaveText("ready");
   await expect(page.getByText("123 Maple Street")).toBeVisible();
+  const managedAddress = `24 ${suffix} Listing Lane`;
+  await page.getByLabel("Address").fill(managedAddress);
+  await page.getByLabel("Price").fill("765000");
+  await page.getByLabel("Beds").fill("4");
+  await page.getByLabel("Baths").fill("3");
+  await page.getByLabel("Sqft").fill("2100");
+  await page.getByLabel("Neighborhood").fill("Berkeley");
+  await page.getByLabel("Property type").fill("house");
+  await page.getByLabel("Features").fill("yard, home office");
+  await page.getByLabel("Agent note").fill("Fresh dashboard-managed listing.");
+  await page.getByRole("button", { name: "Add listing" }).click();
+  const managedCard = page.locator("article").filter({ hasText: managedAddress });
+  await expect(managedCard).toBeVisible();
+  await managedCard.getByRole("button", { name: "Edit listing" }).click();
+  const editCard = page.locator("article").filter({ has: page.getByRole("button", { name: "Save listing" }) });
+  await expect(editCard.getByRole("heading", { name: "Edit listing" })).toBeVisible();
+  await editCard.getByLabel("Price").fill("795000");
+  await editCard.getByLabel("Neighborhood").fill("Sunnyside");
+  await editCard.getByLabel("Agent note").fill("Updated from the dashboard.");
+  await editCard.getByRole("button", { name: "Save listing" }).click();
+  const updatedCard = page.locator("article").filter({ hasText: managedAddress });
+  await expect(updatedCard.getByText("$795k")).toBeVisible();
+  await expect(updatedCard.getByText("Updated from the dashboard.")).toBeVisible();
+  await updatedCard.getByRole("button", { name: "Delete listing" }).click();
+  await updatedCard.getByRole("button", { name: "Confirm delete" }).click();
+  await expect(page.getByText(managedAddress)).not.toBeVisible();
 
   await page.goto(`/${slug}/seller`, { waitUntil: "domcontentloaded" });
   await expect(page.getByTestId("seller-form-ready")).toHaveText("ready");

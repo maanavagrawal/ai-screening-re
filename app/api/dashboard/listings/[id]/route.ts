@@ -40,7 +40,8 @@ export async function DELETE(_: Request, context: { params: Promise<{ id: string
   if (!agent) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
 
   const { id } = await context.params;
-  await deleteListingForAgent(agent.id, id);
+  const deleted = await deleteListingForAgent(agent.id, id);
+  if (!deleted) return NextResponse.json({ error: "Listing not found" }, { status: 404 });
   return NextResponse.json({ ok: true });
 }
 

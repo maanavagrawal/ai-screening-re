@@ -164,14 +164,19 @@ export async function updateListingForAgent(
 
 export async function deleteListingForAgent(agentId: string, listingId: string): Promise<boolean> {
   if (hasPostgresEnv()) {
-    await query("delete from listings where agent_id = $1 and id = $2", [agentId, listingId]);
-    return true;
+    const result = await query("delete from listings where agent_id = $1 and id = $2", [agentId, listingId]);
+    return (result?.rowCount ?? 0) > 0;
   }
 
   const supabase = getServiceSupabase();
   if (!supabase) return deleteDevListing(agentId, listingId);
 
-  const { error } = await supabase.from("listings").delete().eq("agent_id", agentId).eq("id", listingId);
+  const { data, error } = await supabase
+    .from("listings")
+    .delete()
+    .eq("agent_id", agentId)
+    .eq("id", listingId)
+    .select("id");
   if (error) throw new Error(`Failed to delete listing: ${error.message}`);
-  return true;
+  return (data ?? []).length > 0;
 }

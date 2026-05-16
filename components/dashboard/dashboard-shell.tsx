@@ -2,6 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element */
 import { useEffect, useRef, useState } from "react";
+import type { Dispatch, SetStateAction } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import {
@@ -12,8 +13,12 @@ import {
   Inbox,
   Link as LinkIcon,
   ListVideo,
+  Pencil,
+  Save,
   Search,
   Settings,
+  Trash2,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { agentBaseUrl, humanEvent } from "@/lib/dashboard/client-utils";
@@ -375,44 +380,321 @@ function LeadPanel({ lead, listings, copy, markContacted }: { lead: DashboardLea
   );
 }
 
+type DashboardListingDraft = {
+  address: string;
+  price: string;
+  beds: string;
+  baths: string;
+  sqft: string;
+  neighborhood: string;
+  property_type: string;
+  videoUrl: string;
+  description: string;
+  agent_note: string;
+  features: string;
+  dealBreakerFlags: string;
+  isPocket: boolean;
+};
+
+function emptyListingDraft(): DashboardListingDraft {
+  return {
+    address: "",
+    price: "",
+    beds: "3",
+    baths: "2",
+    sqft: "",
+    neighborhood: "",
+    property_type: "",
+    videoUrl: "",
+    description: "",
+    agent_note: "",
+    features: "",
+    dealBreakerFlags: "",
+    isPocket: false
+  };
+}
+
 function ListingsSection({ listings, setListings }: { listings: Listing[]; setListings: (items: Listing[]) => void }) {
-  const [draft, setDraft] = useState({ address: "", price: "", beds: "3", baths: "2", neighborhood: "", agent_note: "" });
+  const [draft, setDraft] = useState<DashboardListingDraft>(() => emptyListingDraft());
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingDraft, setEditingDraft] = useState<DashboardListingDraft | null>(null);
+  const [saving, setSaving] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+
   async function add() {
+    setSaving("add");
+    setMessage(null);
     const response = await fetch("/api/dashboard/listings", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...draft, price: Number(draft.price), beds: Number(draft.beds), baths: Number(draft.baths), features: [], dealBreakerFlags: [], isPocket: false })
+      body: JSON.stringify(listingPayloadFromDraft(draft))
     });
-    const json = await response.json();
-    if (response.ok) {
+    const json = (await response.json().catch(() => null)) as { listing?: Listing; error?: string } | null;
+    setSaving(null);
+    if (response.ok && json?.listing) {
       setListings([json.listing, ...listings]);
-      setDraft({ address: "", price: "", beds: "3", baths: "2", neighborhood: "", agent_note: "" });
+      setDraft(emptyListingDraft());
+      setMessage("Listing added.");
+    } else {
+      setMessage(json?.error ?? "Could not add listing.");
     }
   }
+
+  function startEdit(listing: Listing) {
+    setMessage(null);
+    setConfirmDeleteId(null);
+    setEditingId(listing.id);
+    setEditingDraft(listingDraftFromListing(listing));
+  }
+
+  async function saveEdit() {
+    if (!editingId || !editingDraft) return;
+    setSaving(`edit:${editingId}`);
+    setMessage(null);
+    const response = await fetch(`/api/dashboard/listings/${encodeURIComponent(editingId)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(listingPayloadFromDraft(editingDraft))
+    });
+    const json = (await response.json().catch(() => null)) as { listing?: Listing; error?: string } | null;
+    setSaving(null);
+    if (response.ok && json?.listing) {
+      const updatedListing = json.listing;
+      setListings(listings.map((listing) => (listing.id === updatedListing.id ? updatedListing : listing)));
+      setEditingId(null);
+      setEditingDraft(null);
+      setMessage("Listing updated.");
+    } else {
+      setMessage(json?.error ?? "Could not update listing.");
+    }
+  }
+
+  async function remove(listingId: string) {
+    setSaving(`delete:${listingId}`);
+    setMessage(null);
+    const response = await fetch(`/api/dashboard/listings/${encodeURIComponent(listingId)}`, { method: "DELETE" });
+    const json = (await response.json().catch(() => null)) as { error?: string } | null;
+    setSaving(null);
+    if (response.ok) {
+      setListings(listings.filter((listing) => listing.id !== listingId));
+      if (editingId === listingId) {
+        setEditingId(null);
+        setEditingDraft(null);
+      }
+      setConfirmDeleteId(null);
+      setMessage("Listing deleted.");
+    } else {
+      setMessage(json?.error ?? "Could not delete listing.");
+    }
+  }
+
+  function updateEditingDraft(next: SetStateAction<DashboardListingDraft>) {
+    setEditingDraft((current) => {
+      if (!current) return current;
+      return typeof next === "function" ? next(current) : next;
+    });
+  }
+
   return (
     <section className="p-5">
       <div className="mb-5 flex items-center justify-between">
         <h1 className="font-serif text-4xl">Listings</h1>
       </div>
-      <div className="mb-6 grid gap-2 rounded-2xl border border-warm-border bg-white p-4 sm:grid-cols-3">
-        {Object.keys(draft).map((key) => (
-          <input key={key} className="rounded-xl border-warm-border text-sm" placeholder={key.replace("_", " ")} value={draft[key as keyof typeof draft]} onChange={(event) => setDraft({ ...draft, [key]: event.target.value })} />
-        ))}
-        <Button className="sm:col-span-3" onClick={add}>Add listing</Button>
-      </div>
+      {message ? <p className="mb-4 rounded-2xl border border-warm-border bg-white px-4 py-3 text-sm text-warm-muted">{message}</p> : null}
+      <ListingForm title="Add listing" draft={draft} setDraft={setDraft} submitLabel="Add listing" busy={saving === "add"} onSubmit={add} />
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {listings.map((listing) => (
           <article key={listing.id} className="rounded-2xl border border-warm-border bg-white p-4">
-            <p className="font-serif text-2xl">{formatCurrency(listing.price)}</p>
-            <p className="mt-2 text-sm text-warm-muted">{listing.beds} beds • {listing.baths} baths • {listing.neighborhood}</p>
-            <p className="mt-1 text-sm">{listing.address}</p>
-            {listing.is_pocket ? <Badge>pocket</Badge> : null}
-            <p className="mt-3 text-sm italic text-warm-muted">{listing.agent_note}</p>
+            {editingId === listing.id && editingDraft ? (
+              <ListingForm
+                title="Edit listing"
+                draft={editingDraft}
+                setDraft={updateEditingDraft}
+                submitLabel="Save listing"
+                busy={saving === `edit:${listing.id}`}
+                onSubmit={saveEdit}
+                framed={false}
+                onCancel={() => {
+                  setEditingId(null);
+                  setEditingDraft(null);
+                  setMessage(null);
+                }}
+              />
+            ) : (
+              <>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-serif text-2xl">{formatCurrency(listing.price)}</p>
+                    <p className="mt-2 text-sm text-warm-muted">{listing.beds} beds • {listing.baths} baths • {listing.neighborhood}</p>
+                    <p className="mt-1 text-sm">{listing.address}</p>
+                  </div>
+                  {listing.is_pocket ? <Badge>pocket</Badge> : null}
+                </div>
+                {listing.features?.length ? (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {listing.features.map((feature) => <Badge key={feature}>{feature.replaceAll("_", " ")}</Badge>)}
+                  </div>
+                ) : null}
+                {listing.description ? <p className="mt-3 text-sm text-warm-muted">{listing.description}</p> : null}
+                {listing.agent_note ? <p className="mt-3 text-sm italic text-warm-muted">{listing.agent_note}</p> : null}
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <Button className="gap-2 px-3 py-2" variant="secondary" onClick={() => startEdit(listing)}>
+                    <Pencil size={15} />
+                    Edit listing
+                  </Button>
+                  {confirmDeleteId === listing.id ? (
+                    <>
+                      <Button className="gap-2 px-3 py-2" variant="secondary" disabled={saving === `delete:${listing.id}`} onClick={() => remove(listing.id)}>
+                        <Trash2 size={15} />
+                        {saving === `delete:${listing.id}` ? "Deleting..." : "Confirm delete"}
+                      </Button>
+                      <Button className="gap-2 px-3 py-2" variant="ghost" onClick={() => setConfirmDeleteId(null)}>
+                        <X size={15} />
+                        Cancel
+                      </Button>
+                    </>
+                  ) : (
+                    <Button className="gap-2 px-3 py-2" variant="ghost" onClick={() => setConfirmDeleteId(listing.id)}>
+                      <Trash2 size={15} />
+                      Delete listing
+                    </Button>
+                  )}
+                </div>
+              </>
+            )}
           </article>
         ))}
       </div>
     </section>
   );
+}
+
+function ListingForm({
+  title,
+  draft,
+  setDraft,
+  submitLabel,
+  busy,
+  onSubmit,
+  framed = true,
+  onCancel
+}: {
+  title: string;
+  draft: DashboardListingDraft;
+  setDraft: Dispatch<SetStateAction<DashboardListingDraft>>;
+  submitLabel: string;
+  busy: boolean;
+  onSubmit: () => void;
+  framed?: boolean;
+  onCancel?: () => void;
+}) {
+  function patch(next: Partial<DashboardListingDraft>) {
+    setDraft((current) => ({ ...current, ...next }));
+  }
+
+  return (
+    <div className={cn("grid gap-3 sm:grid-cols-3", framed ? "mb-6 rounded-2xl border border-warm-border bg-white p-4" : "mb-0 p-0")}>
+      <div className="flex items-center justify-between gap-3 sm:col-span-3">
+        <h2 className="font-serif text-2xl">{title}</h2>
+        {onCancel ? <Button className="gap-2 px-3 py-2" variant="ghost" onClick={onCancel}><X size={15} />Cancel</Button> : null}
+      </div>
+      <DashboardListingInput className="sm:col-span-2" label="Address" value={draft.address} onChange={(address) => patch({ address })} />
+      <DashboardListingInput label="Price" value={draft.price} onChange={(price) => patch({ price: price.replace(/\D/g, "") })} />
+      <DashboardListingInput label="Beds" value={draft.beds} onChange={(beds) => patch({ beds })} />
+      <DashboardListingInput label="Baths" value={draft.baths} onChange={(baths) => patch({ baths })} />
+      <DashboardListingInput label="Sqft" value={draft.sqft} onChange={(sqft) => patch({ sqft: sqft.replace(/\D/g, "") })} />
+      <DashboardListingInput label="Neighborhood" value={draft.neighborhood} onChange={(neighborhood) => patch({ neighborhood })} />
+      <DashboardListingInput label="Property type" value={draft.property_type} onChange={(property_type) => patch({ property_type })} />
+      <DashboardListingInput className="sm:col-span-3" label="Video URL" value={draft.videoUrl} onChange={(videoUrl) => patch({ videoUrl })} />
+      <DashboardListingInput className="sm:col-span-3" label="Features" value={draft.features} onChange={(features) => patch({ features })} placeholder="yard, home office, walkable" />
+      <DashboardListingInput className="sm:col-span-3" label="Deal-breaker flags" value={draft.dealBreakerFlags} onChange={(dealBreakerFlags) => patch({ dealBreakerFlags })} placeholder="busy street, needs work" />
+      <label className="block sm:col-span-3">
+        <span className="text-xs font-semibold text-warm-muted">Description</span>
+        <textarea className="mt-1 min-h-20 w-full rounded-xl border-warm-border text-sm" value={draft.description} onChange={(event) => patch({ description: event.target.value })} />
+      </label>
+      <label className="block sm:col-span-3">
+        <span className="text-xs font-semibold text-warm-muted">Agent note</span>
+        <textarea className="mt-1 min-h-20 w-full rounded-xl border-warm-border text-sm" value={draft.agent_note} onChange={(event) => patch({ agent_note: event.target.value })} />
+      </label>
+      <label className="flex items-center gap-2 text-sm sm:col-span-3">
+        <input type="checkbox" checked={draft.isPocket} onChange={(event) => patch({ isPocket: event.target.checked })} />
+        Off-market or pocket listing
+      </label>
+      <Button className="gap-2 sm:col-span-3" disabled={!listingDraftIsComplete(draft) || busy} onClick={onSubmit}>
+        <Save size={16} />
+        {busy ? "Saving..." : submitLabel}
+      </Button>
+    </div>
+  );
+}
+
+function DashboardListingInput({ label, value, onChange, className, placeholder }: { label: string; value: string; onChange: (value: string) => void; className?: string; placeholder?: string }) {
+  return (
+    <label className={cn("block", className)}>
+      <span className="text-xs font-semibold text-warm-muted">{label}</span>
+      <input className="mt-1 w-full rounded-xl border-warm-border text-sm" value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} />
+    </label>
+  );
+}
+
+function listingPayloadFromDraft(draft: DashboardListingDraft) {
+  const videoUrl = draft.videoUrl.trim();
+  return {
+    address: draft.address.trim(),
+    price: Number(draft.price),
+    beds: Number(draft.beds),
+    baths: Number(draft.baths),
+    sqft: draft.sqft ? Number(draft.sqft) : null,
+    neighborhood: nullableText(draft.neighborhood),
+    property_type: nullableText(draft.property_type),
+    videoUrl: videoUrl || null,
+    videoSource: videoUrl ? videoSourceFromUrl(videoUrl) : null,
+    description: nullableText(draft.description),
+    agent_note: nullableText(draft.agent_note),
+    features: csvList(draft.features),
+    dealBreakerFlags: csvList(draft.dealBreakerFlags),
+    isPocket: draft.isPocket
+  };
+}
+
+function listingDraftFromListing(listing: Listing): DashboardListingDraft {
+  return {
+    address: listing.address,
+    price: String(listing.price),
+    beds: String(listing.beds),
+    baths: String(listing.baths),
+    sqft: listing.sqft ? String(listing.sqft) : "",
+    neighborhood: listing.neighborhood ?? "",
+    property_type: listing.property_type ?? "",
+    videoUrl: listing.video_url ?? "",
+    description: listing.description ?? "",
+    agent_note: listing.agent_note ?? "",
+    features: (listing.features ?? []).join(", "),
+    dealBreakerFlags: (listing.deal_breaker_flags ?? []).join(", "),
+    isPocket: listing.is_pocket
+  };
+}
+
+function listingDraftIsComplete(draft: DashboardListingDraft) {
+  return Boolean(draft.address.trim() && Number(draft.price) > 0 && draft.beds.trim() && Number(draft.beds) >= 0 && draft.baths.trim() && Number(draft.baths) >= 0);
+}
+
+function nullableText(value: string) {
+  const clean = value.trim();
+  return clean ? clean : null;
+}
+
+function csvList(value: string) {
+  return value.split(",").map((item) => item.trim()).filter(Boolean);
+}
+
+function videoSourceFromUrl(url: string): Listing["video_source"] {
+  const clean = url.toLowerCase();
+  if (clean.endsWith(".mp4")) return "mp4";
+  if (clean.includes("instagram.com")) return "instagram";
+  if (clean.includes("tiktok.com")) return "tiktok";
+  return null;
 }
 
 function DistributionSection({ agent, distribution, qr, baseUrl, copy }: { agent: Agent; distribution: DistributionData; qr: string; baseUrl: string; copy: (text: string, message?: string) => void }) {
