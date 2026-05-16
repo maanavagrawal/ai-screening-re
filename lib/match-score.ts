@@ -19,6 +19,13 @@ function includesToken(values: string[] | undefined, value: string | null) {
   return values?.some((item) => normalizeToken(item) === target) ?? false;
 }
 
+function areaLabels(preferences: Preferences) {
+  return [
+    ...(preferences.neighborhoods ?? []),
+    ...(preferences.selected_areas?.flatMap((area) => [area.label, area.parentLabel ?? ""]) ?? [])
+  ].filter(Boolean);
+}
+
 function countTokenMatches(values: string[], wanted: string[] | undefined) {
   const wantedSet = new Set((wanted ?? []).map(normalizeToken));
   return values.filter((value) => wantedSet.has(normalizeToken(value))).length;
@@ -46,10 +53,7 @@ export function normalizePreferences(preferences: Preferences): Preferences {
     baths,
     budget_min: budgetMin != null && budgetMax != null && budgetMin > budgetMax ? budgetMax : budgetMin,
     budget_max: budgetMin != null && budgetMax != null && budgetMin > budgetMax ? budgetMin : budgetMax,
-    neighborhoods:
-      preferences.neighborhoods && preferences.neighborhoods.length > 0
-        ? preferences.neighborhoods
-        : extraction.neighborhoods,
+    neighborhoods: areaLabels(preferences).length > 0 ? areaLabels(preferences) : extraction.neighborhoods,
     must_haves:
       preferences.must_haves && preferences.must_haves.length > 0 ? preferences.must_haves : extraction.must_haves,
     deal_breakers:

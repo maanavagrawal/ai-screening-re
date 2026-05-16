@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { transaction } from "@/lib/db/postgres";
+import { ListingEnrichmentSchema } from "@/lib/listing-enrichment";
 import { getServiceSupabase } from "@/lib/supabase/service";
 import type { Json } from "@/lib/supabase/types";
 import type { Agent, ListingPayload, NotificationPreferences } from "@/lib/types";
@@ -24,7 +25,7 @@ const listingPayloadSchema = z.object({
   description: z.string().nullable().optional(),
   agent_note: z.string().nullable().optional(),
   isPocket: z.boolean().optional()
-});
+}).merge(ListingEnrichmentSchema);
 
 const agentSetupPayloadSchema = z.object({
   userId: z.string().uuid().optional().nullable(),
@@ -117,9 +118,10 @@ export async function onboardAgent(payload: AgentSetupPayload): Promise<Agent> {
         `insert into listings (
           agent_id, address, price, beds, baths, sqft, neighborhood, property_type,
           features, deal_breaker_flags, video_url, video_source, description,
-          agent_note, is_pocket
+          agent_note, is_pocket, attom_id, property_data_source, property_enriched_at,
+          property_match_confidence, normalized_address, property_facts, property_override_fields
         )
-        values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+        values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
         [
           agent.id,
           listing.address,
@@ -135,7 +137,14 @@ export async function onboardAgent(payload: AgentSetupPayload): Promise<Agent> {
           listing.videoSource ?? null,
           listing.description ?? null,
           listing.agent_note ?? null,
-          listing.isPocket ?? false
+          listing.isPocket ?? false,
+          listing.attomId ?? null,
+          listing.propertyDataSource ?? null,
+          listing.propertyEnrichedAt ?? null,
+          listing.propertyMatchConfidence ?? null,
+          JSON.stringify(listing.normalizedAddress ?? null),
+          JSON.stringify(listing.propertyFacts ?? null),
+          listing.propertyOverrideFields ?? []
         ]
       );
     }

@@ -15,4 +15,10 @@ describe("buyer listing-card media", () => {
     expect(source).toContain("isStockOrDemoMedia");
     expect(source).toContain("videos\\.pexels\\.com");
   });
+
+  it("keeps social videos as external links instead of fake mp4 playback", () => {
+    expect(source).toContain("Watch on");
+    expect(source).toContain("ExternalLink");
+    expect(source).toContain("listing.video_source === \"mp4\"");
+  });
 });

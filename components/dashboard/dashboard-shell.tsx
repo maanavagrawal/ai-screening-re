@@ -6,6 +6,7 @@ import type { Dispatch, SetStateAction } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import {
+  BarChart3,
   Clipboard,
   Command,
   Copy,
@@ -21,12 +22,16 @@ import {
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { agentBaseUrl, humanEvent } from "@/lib/dashboard/client-utils";
+import { humanEvent } from "@/lib/dashboard/activity-labels";
+import { agentBaseUrl } from "@/lib/dashboard/client-utils";
 import type { LeadFilter, LeadSort } from "@/lib/dashboard/data";
 import type { DistributionData } from "@/lib/dashboard/distribution";
+import type { DropoffAnalytics } from "@/lib/dashboard/dropoff";
+import { preferenceSummary } from "@/lib/dashboard/preference-summary";
 import { cn, formatCurrency } from "@/lib/formatting";
 import { isSellerLead, sellerDetails } from "@/lib/lead-intent";
-import type { Agent, DashboardLead, Listing, NotificationPreferences } from "@/lib/types";
+import type { Agent, DashboardLead, Listing, ListingPayload, NotificationPreferences } from "@/lib/types";
+import type { PropertyLookupResult } from "@/lib/property/lookup";
 
 type Section = "leads" | "listings" | "distribution" | "settings";
 
@@ -225,6 +230,7 @@ function LeadsSection(props: {
     <section className="grid min-h-[calc(100svh-4rem)] lg:grid-cols-[minmax(0,3fr)_minmax(360px,2fr)]">
       <div className="border-r border-warm-border">
         <header className="space-y-4 border-b border-warm-border p-4">
+          <DropoffSummary />
           <div className="flex flex-wrap gap-2">
             {(["all", "hot", "warm", "browsing", "showings"] as LeadFilter[]).map((item) => (
               <button key={item} onClick={() => props.setFilter(item)} className={cn("rounded-full px-3 py-2 text-xs font-semibold capitalize", props.filter === item ? "bg-[var(--agent-accent)] text-white" : "border border-warm-border bg-white")}>
@@ -261,25 +267,74 @@ function LeadsSection(props: {
   );
 }
 
+function DropoffSummary() {
+  const [analytics, setAnalytics] = useState<DropoffAnalytics | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    fetch("/api/dashboard/analytics/dropoff")
+      .then((response) => (response.ok ? response.json() : null))
+      .then((body: { analytics?: DropoffAnalytics } | null) => {
+        if (mounted && body?.analytics) setAnalytics(body.analytics);
+      })
+      .catch(() => undefined);
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  if (!analytics) return null;
+  const biggestDropoff = analytics.steps
+    .slice(0, -1)
+    .sort((a, b) => b.dropoffAfter - a.dropoffAfter)[0];
+
+  return (
+    <div className="rounded-2xl border border-warm-border bg-white p-4">
+      <div className="flex items-center justify-between gap-3">
+        <p className="flex items-center gap-2 text-sm font-semibold">
+          <BarChart3 size={16} />
+          Intake analytics
+        </p>
+        <p className="text-xs text-warm-muted">{analytics.anonymousAbandoned} anonymous drop-offs</p>
+      </div>
+      <div className="mt-3 grid gap-2 sm:grid-cols-3">
+        {analytics.steps.slice(0, 3).map((step) => (
+          <div key={step.event_type} className="rounded-xl bg-[#FAFAF7] p-3">
+            <p className="text-lg font-semibold">{step.count}</p>
+            <p className="text-xs text-warm-muted">{step.label}</p>
+          </div>
+        ))}
+      </div>
+      {biggestDropoff && biggestDropoff.dropoffAfter > 0 ? (
+        <p className="mt-3 text-xs text-warm-muted">
+          Largest drop-off: {biggestDropoff.dropoffAfter} after {biggestDropoff.label.toLowerCase()}.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 function LeadRow({ lead, active, onOpen, onCopy, onContact }: { lead: DashboardLead; active: boolean; onOpen: () => void; onCopy: () => void; onContact: () => void }) {
   const brief = lead.brief as { one_line_summary?: string; suggested_opener?: string } | null;
   const temp = lead.temperature ?? "browsing";
   const seller = isSellerLead(lead);
   return (
-    <button className={cn("group flex w-full items-center gap-3 px-4 py-4 text-left hover:bg-white", active && "bg-white")} onClick={onOpen}>
-      <span className={cn("h-2.5 w-2.5 rounded-full", temp === "hot" ? "bg-red-600" : temp === "warm" ? "bg-orange-500" : "bg-warm-muted")} />
-      <div className="min-w-0 flex-1">
-        <p className={cn("truncate text-sm font-semibold", !lead.last_contacted_at && "font-bold")}>
-          {lead.first_name || "Unknown"} {seller ? <span className="text-[var(--agent-accent)]">seller</span> : null}
-        </p>
-        <p className="truncate text-sm text-warm-muted">{brief?.one_line_summary || lead.email}</p>
-      </div>
-      <p className="hidden text-xs text-warm-muted sm:block">{relative(lead.last_activity_at)}</p>
-      <span className="hidden gap-1 group-hover:flex">
+    <div className={cn("group flex w-full items-center hover:bg-white", active && "bg-white")}>
+      <button className="flex min-w-0 flex-1 items-center gap-3 px-4 py-4 text-left" onClick={onOpen} type="button">
+        <span className={cn("h-2.5 w-2.5 rounded-full", temp === "hot" ? "bg-red-600" : temp === "warm" ? "bg-orange-500" : "bg-warm-muted")} />
+        <div className="min-w-0 flex-1">
+          <p className={cn("truncate text-sm font-semibold", !lead.last_contacted_at && "font-bold")}>
+            {lead.first_name || "Unknown"} {seller ? <span className="text-[var(--agent-accent)]">seller</span> : null}
+          </p>
+          <p className="truncate text-sm text-warm-muted">{brief?.one_line_summary || lead.email}</p>
+        </div>
+        <p className="hidden text-xs text-warm-muted sm:block">{relative(lead.last_activity_at)}</p>
+      </button>
+      <span className="hidden gap-1 pr-4 group-hover:flex">
         <IconButton label="Copy opener" onClick={(event) => { event.stopPropagation(); onCopy(); }} icon={<Copy size={14} />} />
         <IconButton label="Mark contacted" onClick={(event) => { event.stopPropagation(); onContact(); }} icon={<Checkish />} />
       </span>
-    </button>
+    </div>
   );
 }
 
@@ -334,6 +389,7 @@ function LeadPanel({ lead, listings, copy, markContacted }: { lead: DashboardLea
         ) : null}
         <BriefList title={seller ? "Seller signals" : "Why they're serious"} items={brief?.why_serious ?? []} />
         <BriefList title="Watch-outs" items={brief?.watch_outs ?? []} />
+        {!seller ? <PreferenceSummarySection preferences={currentLead.preferences} /> : null}
         <section>
           <p className="mb-2 text-sm font-semibold">Send this</p>
           <div className="rounded-2xl border border-warm-border bg-[#FAFAF7] p-4 text-sm leading-6">{brief?.suggested_opener ?? "No opener yet."}</div>
@@ -352,11 +408,12 @@ function LeadPanel({ lead, listings, copy, markContacted }: { lead: DashboardLea
           </div>
         </section>
         <BriefList title={`Why this is ${currentLead.temperature ?? "browsing"}`} items={currentLead.temperature_reasons ?? []} />
-        <details className="rounded-2xl border border-warm-border bg-white p-4">
-          <summary className="cursor-pointer text-sm font-semibold">Preferences</summary>
-          <pre className="mt-3 whitespace-pre-wrap text-xs text-warm-muted">{JSON.stringify(currentLead.preferences, null, 2)}</pre>
-          {currentLead.free_text_raw ? <p className="mt-3 text-sm italic text-warm-muted">&quot;{currentLead.free_text_raw}&quot;</p> : null}
-        </details>
+        {currentLead.free_text_raw ? (
+          <section className="rounded-2xl border border-warm-border bg-white p-4">
+            <p className="mb-2 text-sm font-semibold">Original note</p>
+            <p className="text-sm italic leading-6 text-warm-muted">&quot;{currentLead.free_text_raw}&quot;</p>
+          </section>
+        ) : null}
         <section>
           <p className="mb-3 text-sm font-semibold">Activity</p>
           <div className="space-y-3">
@@ -394,6 +451,7 @@ type DashboardListingDraft = {
   features: string;
   dealBreakerFlags: string;
   isPocket: boolean;
+  enrichment: Partial<ListingPayload>;
 };
 
 function emptyListingDraft(): DashboardListingDraft {
@@ -410,7 +468,8 @@ function emptyListingDraft(): DashboardListingDraft {
     agent_note: "",
     features: "",
     dealBreakerFlags: "",
-    isPocket: false
+    isPocket: false,
+    enrichment: {}
   };
 }
 
@@ -473,7 +532,9 @@ function ListingsSection({ listings, setListings }: { listings: Listing[]; setLi
   async function remove(listingId: string) {
     setSaving(`delete:${listingId}`);
     setMessage(null);
-    const response = await fetch(`/api/dashboard/listings/${encodeURIComponent(listingId)}`, { method: "DELETE" });
+    const response = await fetch(`/api/dashboard/listings/${encodeURIComponent(listingId)}`, {
+      method: "DELETE"
+    });
     const json = (await response.json().catch(() => null)) as { error?: string } | null;
     setSaving(null);
     if (response.ok) {
@@ -502,7 +563,14 @@ function ListingsSection({ listings, setListings }: { listings: Listing[]; setLi
         <h1 className="font-serif text-4xl">Listings</h1>
       </div>
       {message ? <p className="mb-4 rounded-2xl border border-warm-border bg-white px-4 py-3 text-sm text-warm-muted">{message}</p> : null}
-      <ListingForm title="Add listing" draft={draft} setDraft={setDraft} submitLabel="Add listing" busy={saving === "add"} onSubmit={add} />
+      <ListingForm
+        title="Add listing"
+        draft={draft}
+        setDraft={setDraft}
+        submitLabel="Add listing"
+        busy={saving === "add"}
+        onSubmit={add}
+      />
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {listings.map((listing) => (
           <article key={listing.id} className="rounded-2xl border border-warm-border bg-white p-4">
@@ -531,6 +599,12 @@ function ListingsSection({ listings, setListings }: { listings: Listing[]; setLi
                   </div>
                   {listing.is_pocket ? <Badge>pocket</Badge> : null}
                 </div>
+                {listing.property_facts?.yearBuilt || listing.property_data_source ? (
+                  <p className="mt-3 text-xs text-warm-muted">
+                    {listing.property_data_source ? `${listing.property_data_source} facts` : "Property facts"}
+                    {listing.property_facts?.yearBuilt ? ` • built ${listing.property_facts.yearBuilt}` : ""}
+                  </p>
+                ) : null}
                 {listing.features?.length ? (
                   <div className="mt-3 flex flex-wrap gap-2">
                     {listing.features.map((feature) => <Badge key={feature}>{feature.replaceAll("_", " ")}</Badge>)}
@@ -545,7 +619,12 @@ function ListingsSection({ listings, setListings }: { listings: Listing[]; setLi
                   </Button>
                   {confirmDeleteId === listing.id ? (
                     <>
-                      <Button className="gap-2 px-3 py-2" variant="secondary" disabled={saving === `delete:${listing.id}`} onClick={() => remove(listing.id)}>
+                      <Button
+                        className="gap-2 px-3 py-2"
+                        variant="secondary"
+                        disabled={saving === `delete:${listing.id}`}
+                        onClick={() => remove(listing.id)}
+                      >
                         <Trash2 size={15} />
                         {saving === `delete:${listing.id}` ? "Deleting..." : "Confirm delete"}
                       </Button>
@@ -589,36 +668,101 @@ function ListingForm({
   framed?: boolean;
   onCancel?: () => void;
 }) {
-  function patch(next: Partial<DashboardListingDraft>) {
-    setDraft((current) => ({ ...current, ...next }));
+  const [lookupBusy, setLookupBusy] = useState(false);
+  const [lookupResult, setLookupResult] = useState<PropertyLookupResult | null>(null);
+  const [lookupMessage, setLookupMessage] = useState("");
+
+  useEffect(() => {
+    setLookupResult(null);
+    setLookupMessage("");
+  }, [draft.address]);
+
+  async function lookupProperty() {
+    if (!draft.address.trim()) return;
+    setLookupBusy(true);
+    const response = await fetch("/api/listing-property-search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ address: draft.address })
+    });
+    const json = (await response.json().catch(() => null)) as { result?: PropertyLookupResult; error?: string } | null;
+    setLookupBusy(false);
+    if (response.ok && json?.result) {
+      setLookupResult(json.result);
+      setLookupMessage(json.result.message);
+    } else {
+      setLookupMessage(json?.error ?? "Could not look up property facts.");
+    }
+  }
+
+  function applyLookup(result: PropertyLookupResult) {
+    const facts = result.propertyFacts ?? {};
+    setDraft((current) => ({
+      ...current,
+      address: result.normalizedAddress?.label ?? current.address,
+      neighborhood: current.neighborhood || result.normalizedAddress?.city || "",
+      beds: current.beds || (facts.beds ? String(facts.beds) : ""),
+      baths: current.baths || (facts.baths ? String(facts.baths) : ""),
+      sqft: current.sqft || (facts.sqft ? String(facts.sqft) : ""),
+      property_type: current.property_type || propertyTypeValue(facts.propertyType) || "",
+      enrichment: {
+        attomId: result.attomId,
+        propertyDataSource: result.propertyDataSource,
+        propertyEnrichedAt: result.propertyEnrichedAt,
+        propertyMatchConfidence: result.propertyMatchConfidence,
+        normalizedAddress: result.normalizedAddress,
+        propertyFacts: result.propertyFacts,
+        propertyOverrideFields: []
+      }
+    }));
   }
 
   return (
     <div className={cn("grid gap-3 sm:grid-cols-3", framed ? "mb-6 rounded-2xl border border-warm-border bg-white p-4" : "mb-0 p-0")}>
       <div className="flex items-center justify-between gap-3 sm:col-span-3">
         <h2 className="font-serif text-2xl">{title}</h2>
-        {onCancel ? <Button className="gap-2 px-3 py-2" variant="ghost" onClick={onCancel}><X size={15} />Cancel</Button> : null}
+        {onCancel ? (
+          <Button className="gap-2 px-3 py-2" variant="ghost" onClick={onCancel}>
+            <X size={15} />
+            Cancel
+          </Button>
+        ) : null}
       </div>
-      <DashboardListingInput className="sm:col-span-2" label="Address" value={draft.address} onChange={(address) => patch({ address })} />
-      <DashboardListingInput label="Price" value={draft.price} onChange={(price) => patch({ price: price.replace(/\D/g, "") })} />
-      <DashboardListingInput label="Beds" value={draft.beds} onChange={(beds) => patch({ beds })} />
-      <DashboardListingInput label="Baths" value={draft.baths} onChange={(baths) => patch({ baths })} />
-      <DashboardListingInput label="Sqft" value={draft.sqft} onChange={(sqft) => patch({ sqft: sqft.replace(/\D/g, "") })} />
-      <DashboardListingInput label="Neighborhood" value={draft.neighborhood} onChange={(neighborhood) => patch({ neighborhood })} />
-      <DashboardListingInput label="Property type" value={draft.property_type} onChange={(property_type) => patch({ property_type })} />
-      <DashboardListingInput className="sm:col-span-3" label="Video URL" value={draft.videoUrl} onChange={(videoUrl) => patch({ videoUrl })} />
-      <DashboardListingInput className="sm:col-span-3" label="Features" value={draft.features} onChange={(features) => patch({ features })} placeholder="yard, home office, walkable" />
-      <DashboardListingInput className="sm:col-span-3" label="Deal-breaker flags" value={draft.dealBreakerFlags} onChange={(dealBreakerFlags) => patch({ dealBreakerFlags })} placeholder="busy street, needs work" />
+      <DashboardListingInput className="sm:col-span-2" label="Address" value={draft.address} onChange={(address) => setDraft((current) => ({ ...current, address }))} />
+      <Button className="gap-2" variant="secondary" disabled={!draft.address || lookupBusy} onClick={lookupProperty}>
+        <Search size={16} />
+        {lookupBusy ? "Looking..." : "Lookup facts"}
+      </Button>
+      {lookupMessage ? <p className="text-sm text-warm-muted sm:col-span-3">{lookupMessage}</p> : null}
+      {lookupResult ? (
+        <div className="rounded-xl border border-warm-border bg-[#FAFAF7] p-3 text-sm sm:col-span-3">
+          <p className="font-semibold">{lookupResult.normalizedAddress?.label ?? draft.address}</p>
+          <p className="mt-1 text-warm-muted">{propertyFactLine(lookupResult)}</p>
+          <Button className="mt-3 gap-2" variant="secondary" onClick={() => applyLookup(lookupResult)}>
+            <Save size={15} />
+            Use facts
+          </Button>
+        </div>
+      ) : null}
+      <DashboardListingInput label="Price" value={draft.price} onChange={(price) => setDraft((current) => ({ ...current, price: price.replace(/\D/g, "") }))} />
+      <DashboardListingInput label="Beds" value={draft.beds} onChange={(beds) => setDraft((current) => ({ ...current, beds }))} />
+      <DashboardListingInput label="Baths" value={draft.baths} onChange={(baths) => setDraft((current) => ({ ...current, baths }))} />
+      <DashboardListingInput label="Sqft" value={draft.sqft} onChange={(sqft) => setDraft((current) => ({ ...current, sqft: sqft.replace(/\D/g, "") }))} />
+      <DashboardListingInput label="Neighborhood" value={draft.neighborhood} onChange={(neighborhood) => setDraft((current) => ({ ...current, neighborhood }))} />
+      <DashboardListingInput label="Property type" value={draft.property_type} onChange={(property_type) => setDraft((current) => ({ ...current, property_type }))} />
+      <DashboardListingInput className="sm:col-span-3" label="Video URL" value={draft.videoUrl} onChange={(videoUrl) => setDraft((current) => ({ ...current, videoUrl }))} />
+      <DashboardListingInput className="sm:col-span-3" label="Features" value={draft.features} onChange={(features) => setDraft((current) => ({ ...current, features }))} placeholder="yard, home office, walkable" />
+      <DashboardListingInput className="sm:col-span-3" label="Deal-breaker flags" value={draft.dealBreakerFlags} onChange={(dealBreakerFlags) => setDraft((current) => ({ ...current, dealBreakerFlags }))} placeholder="busy street, needs work" />
       <label className="block sm:col-span-3">
         <span className="text-xs font-semibold text-warm-muted">Description</span>
-        <textarea className="mt-1 min-h-20 w-full rounded-xl border-warm-border text-sm" value={draft.description} onChange={(event) => patch({ description: event.target.value })} />
+        <textarea className="mt-1 min-h-20 w-full rounded-xl border-warm-border text-sm" value={draft.description} onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))} />
       </label>
       <label className="block sm:col-span-3">
         <span className="text-xs font-semibold text-warm-muted">Agent note</span>
-        <textarea className="mt-1 min-h-20 w-full rounded-xl border-warm-border text-sm" value={draft.agent_note} onChange={(event) => patch({ agent_note: event.target.value })} />
+        <textarea className="mt-1 min-h-20 w-full rounded-xl border-warm-border text-sm" value={draft.agent_note} onChange={(event) => setDraft((current) => ({ ...current, agent_note: event.target.value }))} />
       </label>
       <label className="flex items-center gap-2 text-sm sm:col-span-3">
-        <input type="checkbox" checked={draft.isPocket} onChange={(event) => patch({ isPocket: event.target.checked })} />
+        <input type="checkbox" checked={draft.isPocket} onChange={(event) => setDraft((current) => ({ ...current, isPocket: event.target.checked }))} />
         Off-market or pocket listing
       </label>
       <Button className="gap-2 sm:col-span-3" disabled={!listingDraftIsComplete(draft) || busy} onClick={onSubmit}>
@@ -638,7 +782,7 @@ function DashboardListingInput({ label, value, onChange, className, placeholder 
   );
 }
 
-function listingPayloadFromDraft(draft: DashboardListingDraft) {
+function listingPayloadFromDraft(draft: DashboardListingDraft): ListingPayload {
   const videoUrl = draft.videoUrl.trim();
   return {
     address: draft.address.trim(),
@@ -654,7 +798,8 @@ function listingPayloadFromDraft(draft: DashboardListingDraft) {
     agent_note: nullableText(draft.agent_note),
     features: csvList(draft.features),
     dealBreakerFlags: csvList(draft.dealBreakerFlags),
-    isPocket: draft.isPocket
+    isPocket: draft.isPocket,
+    ...draft.enrichment
   };
 }
 
@@ -672,12 +817,28 @@ function listingDraftFromListing(listing: Listing): DashboardListingDraft {
     agent_note: listing.agent_note ?? "",
     features: (listing.features ?? []).join(", "),
     dealBreakerFlags: (listing.deal_breaker_flags ?? []).join(", "),
-    isPocket: listing.is_pocket
+    isPocket: listing.is_pocket,
+    enrichment: {
+      attomId: listing.attom_id ?? null,
+      propertyDataSource: listing.property_data_source ?? null,
+      propertyEnrichedAt: listing.property_enriched_at ?? null,
+      propertyMatchConfidence: listing.property_match_confidence ?? null,
+      normalizedAddress: listing.normalized_address ?? null,
+      propertyFacts: listing.property_facts ?? null,
+      propertyOverrideFields: listing.property_override_fields ?? []
+    }
   };
 }
 
 function listingDraftIsComplete(draft: DashboardListingDraft) {
-  return Boolean(draft.address.trim() && Number(draft.price) > 0 && draft.beds.trim() && Number(draft.beds) >= 0 && draft.baths.trim() && Number(draft.baths) >= 0);
+  return Boolean(
+    draft.address.trim() &&
+    Number(draft.price) > 0 &&
+    draft.beds.trim() &&
+    Number(draft.beds) >= 0 &&
+    draft.baths.trim() &&
+    Number(draft.baths) >= 0
+  );
 }
 
 function nullableText(value: string) {
@@ -686,7 +847,10 @@ function nullableText(value: string) {
 }
 
 function csvList(value: string) {
-  return value.split(",").map((item) => item.trim()).filter(Boolean);
+  return value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
 }
 
 function videoSourceFromUrl(url: string): Listing["video_source"] {
@@ -694,6 +858,28 @@ function videoSourceFromUrl(url: string): Listing["video_source"] {
   if (clean.endsWith(".mp4")) return "mp4";
   if (clean.includes("instagram.com")) return "instagram";
   if (clean.includes("tiktok.com")) return "tiktok";
+  return null;
+}
+
+function propertyFactLine(result: PropertyLookupResult) {
+  const facts = result.propertyFacts ?? {};
+  return [
+    facts.beds ? `${facts.beds} beds` : null,
+    facts.baths ? `${facts.baths} baths` : null,
+    facts.sqft ? `${facts.sqft.toLocaleString()} sqft` : null,
+    facts.yearBuilt ? `Built ${facts.yearBuilt}` : null,
+    facts.propertyType ?? null
+  ]
+    .filter(Boolean)
+    .join(" • ") || "No structured facts found yet.";
+}
+
+function propertyTypeValue(value?: string | null) {
+  const clean = value?.toLowerCase() ?? "";
+  if (clean.includes("condo")) return "condo";
+  if (clean.includes("town")) return "townhouse";
+  if (clean.includes("multi")) return "multi_family";
+  if (clean.includes("single") || clean.includes("residential")) return "house";
   return null;
 }
 
@@ -824,6 +1010,24 @@ function BriefList({ title, items }: { title: string; items: string[] }) {
       <ul className="space-y-2 text-sm text-warm-muted">
         {items.map((item) => <li key={item}>• {item}</li>)}
       </ul>
+    </section>
+  );
+}
+
+function PreferenceSummarySection({ preferences }: { preferences: DashboardLead["preferences"] }) {
+  const items = preferenceSummary(preferences);
+  if (!items.length) return null;
+  return (
+    <section>
+      <p className="mb-2 text-sm font-semibold">Preference summary</p>
+      <div className="grid gap-2">
+        {items.map((item) => (
+          <div key={item.label} className="rounded-2xl border border-warm-border bg-white p-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-warm-muted">{item.label}</p>
+            <p className="mt-1 text-sm leading-6">{item.value}</p>
+          </div>
+        ))}
+      </div>
     </section>
   );
 }

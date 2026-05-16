@@ -63,6 +63,13 @@ create table if not exists listings (
   description text,
   agent_note text,
   is_pocket boolean default false,
+  attom_id text,
+  property_data_source text check (property_data_source in ('attom','manual','fixture')),
+  property_enriched_at timestamptz,
+  property_match_confidence numeric(3,2),
+  normalized_address jsonb,
+  property_facts jsonb,
+  property_override_fields text[] default '{}',
   created_at timestamptz default now()
 );
 
@@ -164,6 +171,13 @@ create table if not exists agent_magic_links (
 );
 
 alter table agent_magic_links add column if not exists return_to text;
+alter table listings add column if not exists attom_id text;
+alter table listings add column if not exists property_data_source text;
+alter table listings add column if not exists property_enriched_at timestamptz;
+alter table listings add column if not exists property_match_confidence numeric(3,2);
+alter table listings add column if not exists normalized_address jsonb;
+alter table listings add column if not exists property_facts jsonb;
+alter table listings add column if not exists property_override_fields text[] default '{}';
 
 create index if not exists events_lead_created_idx on events (lead_id, created_at desc);
 create index if not exists events_agent_type_created_idx on events (agent_id, event_type, created_at desc);
@@ -174,6 +188,7 @@ create index if not exists leads_agent_temperature_created_idx on leads (agent_i
 create index if not exists leads_agent_last_contacted_idx on leads (agent_id, last_contacted_at);
 create index if not exists leads_agent_snoozed_idx on leads (agent_id, snoozed_until) where snoozed_until is not null;
 create index if not exists listings_agent_idx on listings (agent_id);
+create index if not exists listings_agent_data_source_idx on listings (agent_id, property_data_source);
 create index if not exists domains_domain_idx on domains (domain);
 create index if not exists agent_sessions_token_idx on agent_sessions (token_hash);
 create index if not exists agent_magic_links_token_idx on agent_magic_links (token_hash);

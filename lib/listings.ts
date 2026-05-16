@@ -6,6 +6,7 @@ import {
   updateDevListing
 } from "@/lib/dev-store";
 import { hasPostgresEnv, query } from "@/lib/db/postgres";
+import { enrichmentToRow } from "@/lib/listing-enrichment";
 import { getServiceSupabase } from "@/lib/supabase/service";
 import type { Listing, ListingPayload } from "@/lib/types";
 
@@ -25,8 +26,22 @@ function toInsert(agentId: string, listing: ListingPayload) {
     video_source: listing.videoSource ?? null,
     description: listing.description ?? null,
     agent_note: listing.agent_note ?? null,
-    is_pocket: listing.isPocket ?? false
+    is_pocket: listing.isPocket ?? false,
+    ...enrichmentToRow({
+      attomId: listing.attomId ?? null,
+      propertyDataSource: listing.propertyDataSource ?? null,
+      propertyEnrichedAt: listing.propertyEnrichedAt ?? null,
+      propertyMatchConfidence: listing.propertyMatchConfidence ?? null,
+      normalizedAddress: listing.normalizedAddress ?? null,
+      propertyFacts: listing.propertyFacts ?? null,
+      propertyOverrideFields: listing.propertyOverrideFields ?? []
+    })
   };
+}
+
+function postgresListingValue(key: string, value: unknown) {
+  if (key === "normalized_address" || key === "property_facts") return JSON.stringify(value ?? null);
+  return value;
 }
 
 export async function getListingsForAgent(agentId: string): Promise<Listing[]> {
@@ -81,9 +96,10 @@ export async function createListingForAgent(agentId: string, listing: ListingPay
       `insert into listings (
         agent_id, address, price, beds, baths, sqft, neighborhood, property_type,
         features, deal_breaker_flags, video_url, video_source, description,
-        agent_note, is_pocket
+        agent_note, is_pocket, attom_id, property_data_source, property_enriched_at,
+        property_match_confidence, normalized_address, property_facts, property_override_fields
       )
-      values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+      values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
       returning *`,
       [
         row.agent_id,
@@ -100,7 +116,14 @@ export async function createListingForAgent(agentId: string, listing: ListingPay
         row.video_source,
         row.description,
         row.agent_note,
-        row.is_pocket
+        row.is_pocket,
+        row.attom_id,
+        row.property_data_source,
+        row.property_enriched_at,
+        row.property_match_confidence,
+        JSON.stringify(row.normalized_address ?? null),
+        JSON.stringify(row.property_facts ?? null),
+        row.property_override_fields ?? []
       ]
     )) ?? { rows: [] };
     return rows[0];
@@ -134,14 +157,15 @@ export async function updateListingForAgent(
     ...(patch.videoSource !== undefined ? { video_source: patch.videoSource ?? null } : {}),
     ...(patch.description !== undefined ? { description: patch.description ?? null } : {}),
     ...(patch.agent_note !== undefined ? { agent_note: patch.agent_note ?? null } : {}),
-    ...(patch.isPocket !== undefined ? { is_pocket: patch.isPocket } : {})
+    ...(patch.isPocket !== undefined ? { is_pocket: patch.isPocket } : {}),
+    ...enrichmentToRow(patch)
   };
 
   if (hasPostgresEnv()) {
     const keys = Object.keys(rowPatch) as Array<keyof Listing>;
     if (!keys.length) return getListingForAgent(agentId, listingId);
     const assignments = keys.map((key, index) => `${String(key)} = $${index + 3}`).join(", ");
-    const values = keys.map((key) => rowPatch[key]);
+    const values = keys.map((key) => postgresListingValue(String(key), rowPatch[key]));
     const { rows } = (await query<Listing>(
       `update listings set ${assignments} where agent_id = $1 and id = $2 returning *`,
       [agentId, listingId, ...values]

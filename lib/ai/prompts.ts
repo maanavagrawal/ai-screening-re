@@ -69,7 +69,7 @@ Rules:
 ${input.agent.name}
 
 Recent listings:
-${JSON.stringify(input.listings.slice(0, 5), null, 2)}
+${JSON.stringify(input.listings.slice(0, 5).map(buyerSafeListingSummary), null, 2)}
 
 Base tracked link:
 ${input.baseUrl}`

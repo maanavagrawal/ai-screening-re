@@ -35,6 +35,21 @@ describe("matchScore", () => {
     expect(matchScore(listing, preferences)).toBe(8);
   });
 
+  it("matches selected area labels from typed location intake", () => {
+    expect(
+      matchScore(listing, {
+        selected_areas: [
+          {
+            label: "East Austin",
+            source: "google_places",
+            type: "neighborhood",
+            parentLabel: "Austin, TX"
+          }
+        ]
+      })
+    ).toBe(1);
+  });
+
   it("subtracts three points per matching deal breaker", () => {
     expect(matchScore(listing, { deal_breakers: ["busy_street"] })).toBe(-3);
   });

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { EVENT_TYPES } from "@/lib/constants";
-import { addDevEvents, getDevEventsForLead } from "@/lib/dev-store";
+import { addDevEvents, getDevEventsForAgent as getDevEventsForAgentRows, getDevEventsForLead } from "@/lib/dev-store";
 import { hasPostgresEnv, query } from "@/lib/db/postgres";
 import { getServiceSupabase } from "@/lib/supabase/service";
 import type { Agent, EventRecord, Lead } from "@/lib/types";
@@ -28,7 +28,7 @@ export async function logEvents(input: {
     lead_id: input.leadId ?? null,
     agent_id: input.agent.id,
     event_type: event.event_type,
-    metadata: event.metadata ?? {}
+    metadata: sanitizeEventMetadata(event.event_type, event.metadata ?? {})
   }));
 
   if (hasPostgresEnv()) {
@@ -51,6 +51,55 @@ export async function logEvents(input: {
   const { data, error } = await supabase.from("events").insert(rows).select("*");
   if (error) throw new Error(`Failed to log events: ${error.message}`);
   return data as EventRecord[];
+}
+
+export function sanitizeEventMetadata(eventType: string, metadata: Record<string, unknown>) {
+  const listingId = typeof metadata.listing_id === "string" ? metadata.listing_id : undefined;
+  if (eventType === "intake_question_answered") {
+    const qId = typeof metadata.q_id === "string" ? metadata.q_id : undefined;
+    return {
+      ...(qId ? { q_id: qId } : {}),
+      answer_kind: typeof metadata.answer_kind === "string" ? metadata.answer_kind : answerKind(metadata.answer),
+      ...(typeof metadata.selected_count === "number"
+        ? { selected_count: metadata.selected_count }
+        : Array.isArray(metadata.answer)
+          ? { selected_count: metadata.answer.length }
+          : {}),
+      has_value: typeof metadata.has_value === "boolean" ? metadata.has_value : hasAnswerValue(metadata.answer)
+    };
+  }
+
+  return {
+    ...(listingId ? { listing_id: listingId } : {}),
+    ...(typeof metadata.source === "string" ? { source: metadata.source } : {}),
+    ...(typeof metadata.start_over === "boolean" ? { start_over: metadata.start_over } : {}),
+    ...(typeof metadata.length_chars === "number" ? { length_chars: metadata.length_chars } : {})
+  };
+}
+
+export async function getEventsForAgent(agentId: string): Promise<EventRecord[]> {
+  if (hasPostgresEnv()) {
+    const { rows } = (await query<EventRecord>(
+      `select *
+       from events
+       where agent_id = $1
+       order by created_at asc`,
+      [agentId]
+    )) ?? { rows: [] };
+    return rows;
+  }
+
+  const supabase = getServiceSupabase();
+  if (!supabase) return getDevEventsForAgentRows(agentId);
+
+  const { data, error } = await supabase
+    .from("events")
+    .select("*")
+    .eq("agent_id", agentId)
+    .order("created_at", { ascending: true });
+
+  if (error) throw new Error(`Failed to load agent events: ${error.message}`);
+  return (data ?? []) as EventRecord[];
 }
 
 export async function getEventsForLead(lead: Lead): Promise<EventRecord[]> {
@@ -92,4 +141,16 @@ export async function getEventsForLead(lead: Lead): Promise<EventRecord[]> {
   }
 
   return Array.from(byId.values()).sort((a, b) => a.created_at.localeCompare(b.created_at));
+}
+
+function answerKind(answer: unknown) {
+  if (Array.isArray(answer)) return "array";
+  if (answer === null || answer === undefined || answer === "") return "empty";
+  return typeof answer;
+}
+
+function hasAnswerValue(answer: unknown) {
+  if (Array.isArray(answer)) return answer.length > 0;
+  if (typeof answer === "string") return answer.trim().length > 0;
+  return answer !== null && answer !== undefined;
 }

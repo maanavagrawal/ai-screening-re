@@ -1,7 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ChoiceGrid, ContinueButton, QuestionFrame } from "@/components/intake/primitives";
+import type { SelectedArea } from "@/lib/types";
+
+type LocationSuggestion = SelectedArea & { attribution?: "google" | "agent" | "manual" };
 
 function displaySegment(value: string) {
   if (value === "yes") return "Yes";
@@ -140,6 +143,139 @@ export function MultiSelectQuestion({
     <QuestionFrame title={title}>
       <ChoiceGrid disabled={disabled} multi value={values} onSelect={(next) => setValues(next as string[])} options={options} />
       <ContinueButton disabled={disabled} onClick={() => onAnswer(values)}>{values.length ? "Continue" : "Skip"}</ContinueButton>
+    </QuestionFrame>
+  );
+}
+
+export function LocationQuestion({
+  agentSlug,
+  initialOptions,
+  initial,
+  disabled,
+  onAnswer
+}: {
+  agentSlug: string;
+  initialOptions: string[];
+  initial?: SelectedArea[];
+  disabled?: boolean;
+  onAnswer: (value: { selected_areas: SelectedArea[]; neighborhoods: string[]; open_to_suggestions: boolean }) => void;
+}) {
+  const initialSuggestions = useMemo<LocationSuggestion[]>(
+    () =>
+      initialOptions.map((label) => ({
+        label,
+        source: "agent_suggestion" as const,
+        type: "neighborhood" as const,
+        attribution: "agent" as const
+      })),
+    [initialOptions]
+  );
+  const [query, setQuery] = useState("");
+  const [suggestions, setSuggestions] = useState(initialSuggestions);
+  const [selected, setSelected] = useState<SelectedArea[]>(initial ?? []);
+  const [openToSuggestions, setOpenToSuggestions] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const trimmed = query.trim();
+    if (!trimmed) {
+      setSuggestions(initialSuggestions);
+      return;
+    }
+
+    const timeout = window.setTimeout(async () => {
+      setLoading(true);
+      const response = await fetch("/api/intake/location-search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agent_slug: agentSlug, query: trimmed })
+      });
+      const body = (await response.json().catch(() => null)) as { suggestions?: LocationSuggestion[] } | null;
+      setLoading(false);
+      if (response.ok && body?.suggestions) setSuggestions(body.suggestions);
+    }, 180);
+
+    return () => window.clearTimeout(timeout);
+  }, [agentSlug, initialSuggestions, query]);
+
+  function toggle(area: SelectedArea) {
+    setSelected((current) => {
+      const exists = current.some((item) => item.label === area.label && item.type === area.type);
+      return exists ? current.filter((item) => !(item.label === area.label && item.type === area.type)) : [...current, area];
+    });
+  }
+
+  return (
+    <QuestionFrame title="Where should we look?">
+      <input
+        className="h-12 w-full rounded-2xl border-warm-border bg-white px-4 text-sm"
+        value={query}
+        disabled={disabled}
+        onChange={(event) => setQuery(event.target.value)}
+        placeholder="City, neighborhood, ZIP, or school district"
+      />
+      <div className="mt-3 flex flex-wrap gap-2">
+        {selected.map((area) => (
+          <button
+            key={`${area.type}:${area.label}`}
+            type="button"
+            disabled={disabled}
+            className="rounded-full bg-[var(--agent-accent)] px-3 py-2 text-xs font-semibold text-white"
+            onClick={() => toggle(area)}
+          >
+            {area.label}
+          </button>
+        ))}
+      </div>
+      <div className="mt-4 grid gap-2">
+        {suggestions.slice(0, 6).map((area) => {
+          const active = selected.some((item) => item.label === area.label && item.type === area.type);
+          return (
+            <button
+              key={`${area.type}:${area.label}:${area.placeId ?? ""}`}
+              type="button"
+              disabled={disabled}
+              aria-pressed={active}
+              className="agent-focus flex min-h-14 items-center justify-between rounded-2xl border bg-white px-4 py-3 text-left text-sm"
+              style={{
+                borderColor: active ? "var(--agent-accent)" : "var(--border)",
+                background: active ? "var(--agent-accent-soft)" : "rgba(255,255,255,0.7)"
+              }}
+              onClick={() => toggle(area)}
+            >
+              <span>
+                <span className="block font-semibold">{area.label}</span>
+                {area.parentLabel ? <span className="text-xs text-warm-muted">{area.parentLabel}</span> : null}
+              </span>
+              <span className="text-xs capitalize text-warm-muted">{area.type.replaceAll("_", " ")}</span>
+            </button>
+          );
+        })}
+      </div>
+      <label className="mt-4 flex items-center gap-3 text-sm font-semibold">
+        <input
+          type="checkbox"
+          disabled={disabled}
+          checked={openToSuggestions}
+          onChange={(event) => setOpenToSuggestions(event.target.checked)}
+        />
+        Open to agent suggestions
+      </label>
+      {suggestions.some((item) => item.source === "google_places") ? (
+        <p className="mt-3 text-xs text-warm-muted">Powered by Google</p>
+      ) : null}
+      <ContinueButton
+        disabled={disabled || loading}
+        onClick={() =>
+          onAnswer({
+            selected_areas: selected,
+            neighborhoods: selected.map((area) => area.label),
+            open_to_suggestions: openToSuggestions
+          })
+        }
+      >
+        {selected.length || openToSuggestions ? "Continue" : "Skip"}
+      </ContinueButton>
     </QuestionFrame>
   );
 }

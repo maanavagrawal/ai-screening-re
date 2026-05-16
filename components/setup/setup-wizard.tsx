@@ -13,6 +13,7 @@ import {
   Mic,
   Phone,
   Plus,
+  Search,
   Tag,
   Wand2
 } from "lucide-react";
@@ -21,6 +22,7 @@ import { SetupPreview } from "@/components/setup/setup-preview";
 import { DEAL_BREAKERS, MUST_HAVES } from "@/lib/constants";
 import { cn, formatCurrency } from "@/lib/formatting";
 import type { AgentSetupDraftData, ListingPayload } from "@/lib/types";
+import type { PropertyLookupResult } from "@/lib/property/lookup";
 
 const steps = ["welcome", "basics", "voice", "listings", "neighborhoods", "phone", "link", "simulation"] as const;
 type Step = (typeof steps)[number];
@@ -32,6 +34,7 @@ type WizardListing = Partial<ListingPayload> & {
   sourceText?: string;
   extractMessage?: string;
   extractDetailsMessage?: string;
+  propertyLookupMessage?: string;
 };
 
 export function SetupWizard({
@@ -687,6 +690,46 @@ function ListingEditor(props: {
 }) {
   const [url, setUrl] = useState(props.listing.sourceUrl ?? "");
   const [sourceText, setSourceText] = useState(props.listing.sourceText ?? "");
+  const [propertyBusy, setPropertyBusy] = useState(false);
+  const [propertyResult, setPropertyResult] = useState<PropertyLookupResult | null>(null);
+
+  async function lookupProperty() {
+    if (!props.listing.address) return;
+    setPropertyBusy(true);
+    const response = await fetch("/api/listing-property-search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ address: props.listing.address })
+    });
+    const json = (await response.json().catch(() => null)) as { result?: PropertyLookupResult; error?: string } | null;
+    setPropertyBusy(false);
+    if (response.ok && json?.result) {
+      setPropertyResult(json.result);
+      await props.patch(props.index, { propertyLookupMessage: json.result.message });
+    } else {
+      await props.patch(props.index, { propertyLookupMessage: json?.error ?? "Could not look up property facts." });
+    }
+  }
+
+  async function applyPropertyFacts(result: PropertyLookupResult) {
+    const facts = result.propertyFacts ?? {};
+    await props.patch(props.index, {
+      attomId: result.attomId ?? null,
+      propertyDataSource: result.propertyDataSource,
+      propertyEnrichedAt: result.propertyEnrichedAt,
+      propertyMatchConfidence: result.propertyMatchConfidence,
+      normalizedAddress: result.normalizedAddress,
+      propertyFacts: result.propertyFacts,
+      propertyOverrideFields: [],
+      address: result.normalizedAddress?.label ?? props.listing.address,
+      neighborhood: props.listing.neighborhood || result.normalizedAddress?.city || undefined,
+      beds: props.listing.beds ?? facts.beds ?? undefined,
+      baths: props.listing.baths ?? facts.baths ?? undefined,
+      sqft: props.listing.sqft ?? facts.sqft ?? null,
+      property_type: props.listing.property_type || propertyTypeValue(facts.propertyType) || undefined
+    });
+  }
+
   return (
     <div className="rounded-2xl border border-warm-border bg-white p-4">
       <p className="mb-3 text-sm font-semibold">Listing {props.index + 1}</p>
@@ -695,6 +738,33 @@ function ListingEditor(props: {
         <Button variant="secondary" disabled={!url || props.busy} onClick={() => props.extract(props.index, url)}>Use</Button>
       </div>
       {props.listing.extractMessage ? <p className="mt-2 text-sm text-warm-muted">{props.listing.extractMessage}</p> : null}
+      <div className="mt-4 rounded-2xl border border-warm-border bg-[#FAFAF7] p-3">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-warm-muted">Property facts</p>
+            <p className="mt-1 text-sm text-warm-muted">Lookup public property facts from the listing address.</p>
+          </div>
+          <Button
+            className="gap-2"
+            variant="secondary"
+            disabled={!props.listing.address || propertyBusy}
+            onClick={lookupProperty}
+          >
+            <Search size={16} />
+            {propertyBusy ? "Looking..." : "Lookup"}
+          </Button>
+        </div>
+        {props.listing.propertyLookupMessage ? <p className="mt-2 text-sm text-warm-muted">{props.listing.propertyLookupMessage}</p> : null}
+        {propertyResult ? (
+          <div className="mt-3 rounded-xl border border-warm-border bg-white p-3 text-sm">
+            <p className="font-semibold">{propertyResult.normalizedAddress?.label ?? props.listing.address}</p>
+            <p className="mt-1 text-warm-muted">{propertyFactLine(propertyResult)}</p>
+            <Button className="mt-3 w-full" variant="secondary" onClick={() => applyPropertyFacts(propertyResult)}>
+              Use these facts
+            </Button>
+          </div>
+        ) : null}
+      </div>
       <div className="mt-4 rounded-2xl border border-warm-border bg-[#FAFAF7] p-3">
         <p className="text-xs font-semibold uppercase tracking-wide text-warm-muted">Autofill from text</p>
         <textarea
@@ -749,6 +819,28 @@ function ListingEditor(props: {
       {props.listing.price ? <p className="mt-3 text-sm text-warm-muted">Preview price: {formatCurrency(props.listing.price)}</p> : null}
     </div>
   );
+}
+
+function propertyFactLine(result: PropertyLookupResult) {
+  const facts = result.propertyFacts ?? {};
+  return [
+    facts.beds ? `${facts.beds} beds` : null,
+    facts.baths ? `${facts.baths} baths` : null,
+    facts.sqft ? `${facts.sqft.toLocaleString()} sqft` : null,
+    facts.yearBuilt ? `Built ${facts.yearBuilt}` : null,
+    facts.propertyType ?? null
+  ]
+    .filter(Boolean)
+    .join(" • ") || "No structured facts found yet.";
+}
+
+function propertyTypeValue(value?: string | null) {
+  const clean = value?.toLowerCase() ?? "";
+  if (clean.includes("condo")) return "condo";
+  if (clean.includes("town")) return "townhouse";
+  if (clean.includes("multi")) return "multi_family";
+  if (clean.includes("single") || clean.includes("residential")) return "house";
+  return null;
 }
 
 function Field({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (value: string) => void | Promise<void>; placeholder?: string }) {

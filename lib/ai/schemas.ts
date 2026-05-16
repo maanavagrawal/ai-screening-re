@@ -71,6 +71,30 @@ export const FreeTextExtractionSchema = z.object({
   })
 });
 
+export const SelectedAreaSchema = z.object({
+  label: z.string().min(1),
+  placeId: z.string().nullable().optional(),
+  source: z.enum(["google_places", "manual", "agent_suggestion"]),
+  type: z.enum(["city", "neighborhood", "postal_code", "school_district", "region", "custom"]),
+  parentLabel: z.string().nullable().optional(),
+  bounds: z
+    .object({
+      north: z.number(),
+      south: z.number(),
+      east: z.number(),
+      west: z.number()
+    })
+    .nullable()
+    .optional(),
+  coarseCenter: z
+    .object({
+      latitude: z.number(),
+      longitude: z.number()
+    })
+    .nullable()
+    .optional()
+});
+
 export const IntakeAnswersSchema = z.object({
   answered_question_ids: z.array(QuestionIdSchema).default([]),
   timeline: TimelineSchema.optional(),
@@ -92,6 +116,7 @@ export const IntakeAnswersSchema = z.object({
   bathrooms: z.enum(["1", "2", "3", "4_plus"]).optional(),
   property_type: z.array(z.enum(["house", "condo", "townhouse", "multi_family"])).optional(),
   neighborhoods: z.array(z.string()).optional(),
+  selected_areas: z.array(SelectedAreaSchema).optional(),
   open_to_suggestions: z.boolean().optional(),
   must_haves: z.array(MustHaveSchema).optional(),
   deal_breakers: z.array(DealBreakerSchema).optional(),

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { parseJsonBody } from "@/lib/api/validation";
 import { getCurrentAgent } from "@/lib/auth/session";
+import { ListingEnrichmentSchema } from "@/lib/listing-enrichment";
 import { deleteListingForAgent, updateListingForAgent } from "@/lib/listings";
 
 const PatchSchema = z
@@ -21,6 +22,7 @@ const PatchSchema = z
     agent_note: z.string().nullable().optional(),
     isPocket: z.boolean().optional()
   })
+  .merge(ListingEnrichmentSchema.partial())
   .partial();
 
 export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
@@ -44,4 +46,3 @@ export async function DELETE(_: Request, context: { params: Promise<{ id: string
   if (!deleted) return NextResponse.json({ error: "Listing not found" }, { status: 404 });
   return NextResponse.json({ ok: true });
 }
-

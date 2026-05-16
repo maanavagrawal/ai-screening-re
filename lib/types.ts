@@ -37,6 +37,13 @@ export type Listing = {
   description: string | null;
   agent_note: string | null;
   is_pocket: boolean;
+  attom_id?: string | null;
+  property_data_source?: "attom" | "manual" | "fixture" | null;
+  property_enriched_at?: string | null;
+  property_match_confidence?: number | null;
+  normalized_address?: NormalizedAddress | null;
+  property_facts?: PropertyFacts | null;
+  property_override_fields?: string[] | null;
   created_at?: string;
 };
 
@@ -104,6 +111,7 @@ export type Preferences = {
   bathrooms?: "1" | "2" | "3" | "4_plus";
   property_type?: string[];
   neighborhoods?: string[];
+  selected_areas?: SelectedArea[];
   open_to_suggestions?: boolean;
   must_haves?: string[];
   deal_breakers?: string[];
@@ -112,6 +120,46 @@ export type Preferences = {
   tier_hint?: "captured" | "browsing";
   answered_question_ids?: string[];
   source?: string;
+};
+
+export type SelectedArea = {
+  label: string;
+  placeId?: string | null;
+  source: "google_places" | "manual" | "agent_suggestion";
+  type: "city" | "neighborhood" | "postal_code" | "school_district" | "region" | "custom";
+  parentLabel?: string | null;
+  bounds?: {
+    north: number;
+    south: number;
+    east: number;
+    west: number;
+  } | null;
+  coarseCenter?: {
+    latitude: number;
+    longitude: number;
+  } | null;
+};
+
+export type NormalizedAddress = {
+  line1?: string | null;
+  city?: string | null;
+  state?: string | null;
+  postalCode?: string | null;
+  label?: string | null;
+};
+
+export type PropertyFacts = {
+  beds?: number | null;
+  baths?: number | null;
+  sqft?: number | null;
+  propertyType?: string | null;
+  yearBuilt?: number | null;
+  lotSizeSqft?: number | null;
+  stories?: number | null;
+  parking?: string | null;
+  assessedValue?: number | null;
+  taxAnnualAmount?: number | null;
+  sourceUpdatedAt?: string | null;
 };
 
 export type FreeTextExtraction = {
@@ -144,6 +192,13 @@ export type ListingPayload = {
   description?: string | null;
   agent_note?: string | null;
   isPocket?: boolean;
+  attomId?: string | null;
+  propertyDataSource?: Listing["property_data_source"];
+  propertyEnrichedAt?: string | null;
+  propertyMatchConfidence?: number | null;
+  normalizedAddress?: NormalizedAddress | null;
+  propertyFacts?: PropertyFacts | null;
+  propertyOverrideFields?: string[] | null;
 };
 
 export type ShowingRequest = {

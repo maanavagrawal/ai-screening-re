@@ -24,6 +24,24 @@ const listing: Listing = {
   description: "A bright East Austin home.",
   agent_note: "Easy fit for buyers who want East Austin.",
   is_pocket: false,
+  attom_id: "123456",
+  property_data_source: "attom",
+  property_enriched_at: "2026-05-14T00:00:00.000Z",
+  property_match_confidence: 0.95,
+  normalized_address: {
+    line1: "1811 Willow Creek Drive",
+    city: "Austin",
+    state: "TX",
+    postalCode: "78702",
+    label: "1811 Willow Creek Drive, Austin, TX 78702"
+  },
+  property_facts: {
+    beds: 3,
+    baths: 2,
+    sqft: 1850,
+    propertyType: "Single Family"
+  },
+  property_override_fields: [],
   created_at: "2026-05-14T00:00:00.000Z"
 };
 
@@ -34,13 +52,19 @@ describe("listing privacy", () => {
     expect(redacted.address).toBe(BUYER_ADDRESS_PLACEHOLDER);
     expect(redacted.id).toBe(listing.id);
     expect(redacted.neighborhood).toBe("East Austin");
+    expect("attom_id" in redacted).toBe(false);
+    expect("normalized_address" in redacted).toBe(false);
+    expect("property_facts" in redacted).toBe(false);
   });
 
-  it("creates prompt summaries without an address field", () => {
+  it("creates prompt summaries without address or enrichment fields", () => {
     const summary = buyerSafeListingSummary(listing);
 
     expect(summary.location_label).toBe("East Austin area");
     expect("address" in summary).toBe(false);
+    expect("attom_id" in summary).toBe(false);
+    expect("normalized_address" in summary).toBe(false);
+    expect("property_facts" in summary).toBe(false);
   });
 
   it("scrubs old generated buyer copy that contains exact addresses", () => {

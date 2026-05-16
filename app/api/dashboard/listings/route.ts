@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { parseJsonBody } from "@/lib/api/validation";
 import { getCurrentAgent } from "@/lib/auth/session";
+import { ListingEnrichmentSchema } from "@/lib/listing-enrichment";
 import { createListingForAgent, getListingsForAgent } from "@/lib/listings";
 
 const ListingSchema = z.object({
@@ -19,7 +20,7 @@ const ListingSchema = z.object({
   description: z.string().nullable().optional(),
   agent_note: z.string().nullable().optional(),
   isPocket: z.boolean().default(false)
-});
+}).merge(ListingEnrichmentSchema);
 
 export async function GET() {
   const agent = await getCurrentAgent();
@@ -36,4 +37,3 @@ export async function POST(request: Request) {
   const listing = await createListingForAgent(agent.id, parsed.data);
   return NextResponse.json({ listing });
 }
-

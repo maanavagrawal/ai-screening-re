@@ -11,6 +11,7 @@ import type {
   ShowingRequest
 } from "@/lib/types";
 import type { AgentSetupPayload } from "@/lib/onboard-agent";
+import { enrichmentToRow } from "@/lib/listing-enrichment";
 
 type MatchReason = {
   lead_id: string;
@@ -97,6 +98,15 @@ function toListings(agent: Agent, payload: AgentSetupPayload): Listing[] {
     description: listing.description ?? null,
     agent_note: listing.agent_note ?? null,
     is_pocket: listing.isPocket ?? false,
+    ...enrichmentToRow({
+      attomId: listing.attomId ?? null,
+      propertyDataSource: listing.propertyDataSource ?? null,
+      propertyEnrichedAt: listing.propertyEnrichedAt ?? null,
+      propertyMatchConfidence: listing.propertyMatchConfidence ?? null,
+      normalizedAddress: listing.normalizedAddress ?? null,
+      propertyFacts: listing.propertyFacts ?? null,
+      propertyOverrideFields: listing.propertyOverrideFields ?? []
+    }),
     created_at: now()
   }));
 }
@@ -191,6 +201,15 @@ export function createDevListing(agentId: string, listing: AgentSetupPayload["li
     description: listing.description ?? null,
     agent_note: listing.agent_note ?? null,
     is_pocket: listing.isPocket ?? false,
+    ...enrichmentToRow({
+      attomId: listing.attomId ?? null,
+      propertyDataSource: listing.propertyDataSource ?? null,
+      propertyEnrichedAt: listing.propertyEnrichedAt ?? null,
+      propertyMatchConfidence: listing.propertyMatchConfidence ?? null,
+      normalizedAddress: listing.normalizedAddress ?? null,
+      propertyFacts: listing.propertyFacts ?? null,
+      propertyOverrideFields: listing.propertyOverrideFields ?? []
+    }),
     created_at: now()
   };
   devStore().listings.unshift(row);
@@ -356,6 +375,10 @@ export function getDevEventsForLead(lead: Lead) {
     (event) =>
       event.agent_id === lead.agent_id && (event.lead_id === lead.id || event.session_id === lead.session_id)
   );
+}
+
+export function getDevEventsForAgent(agentId: string) {
+  return devStore().events.filter((event) => event.agent_id === agentId);
 }
 
 export function upsertDevMatchReasons(rows: MatchReason[]) {

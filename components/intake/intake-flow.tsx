@@ -11,6 +11,7 @@ import {
   CurrentSituationQuestion,
   FinancingHelpQuestion,
   FinancingQuestion,
+  LocationQuestion,
   MultiSelectQuestion,
   SegmentedQuestion
 } from "@/components/intake/questions/choice-questions";
@@ -111,7 +112,16 @@ export function IntakeFlow({ agent }: { agent: Agent }) {
     if (questionId === "bedrooms") nextAnswers.bedrooms = value as IntakeAnswers["bedrooms"];
     if (questionId === "bathrooms") nextAnswers.bathrooms = value as IntakeAnswers["bathrooms"];
     if (questionId === "property_type") nextAnswers.property_type = value as NonNullable<IntakeAnswers["property_type"]>;
-    if (questionId === "neighborhoods") nextAnswers.neighborhoods = value as string[];
+    if (questionId === "neighborhoods") {
+      const locationAnswer = value as {
+        neighborhoods?: string[];
+        selected_areas?: IntakeAnswers["selected_areas"];
+        open_to_suggestions?: boolean;
+      };
+      nextAnswers.neighborhoods = locationAnswer.neighborhoods ?? (Array.isArray(value) ? (value as string[]) : []);
+      nextAnswers.selected_areas = locationAnswer.selected_areas ?? [];
+      nextAnswers.open_to_suggestions = Boolean(locationAnswer.open_to_suggestions);
+    }
     if (questionId === "must_haves") nextAnswers.must_haves = value as NonNullable<IntakeAnswers["must_haves"]>;
     if (questionId === "deal_breakers") nextAnswers.deal_breakers = value as NonNullable<IntakeAnswers["deal_breakers"]>;
     if (questionId === "first_time_buyer") nextAnswers.first_time_buyer = value === "yes";
@@ -119,7 +129,7 @@ export function IntakeFlow({ agent }: { agent: Agent }) {
     if (questionId === "preapproval_upload" && value) nextAnswers.preapproval_url = value as string;
 
     setAnswers(nextAnswers);
-    track("intake_question_answered", { q_id: questionId, answer: value });
+    track("intake_question_answered", answerMetadata(questionId, value));
 
     try {
       const decision = fallbackNextQuestion(nextAnswers);
@@ -174,11 +184,6 @@ export function IntakeFlow({ agent }: { agent: Agent }) {
       setReviewFreeText(null);
     }
   }
-
-  const neighborhoodOptions = [
-    ...agent.neighborhoods.map((value) => ({ value, label: value })),
-    { value: "open_to_suggestions", label: "Open to suggestions" }
-  ];
 
   return (
     <BuyerViewport>
@@ -235,7 +240,13 @@ export function IntakeFlow({ agent }: { agent: Agent }) {
               onAnswer={(value) => void advance("property_type", value)}
             />
           ) : question === "neighborhoods" ? (
-            <MultiSelectQuestion disabled={advancing} title="Any favorite neighborhoods?" options={neighborhoodOptions} onAnswer={(value) => void advance("neighborhoods", value)} />
+            <LocationQuestion
+              agentSlug={agent.slug}
+              disabled={advancing}
+              initialOptions={agent.neighborhoods}
+              initial={answers.selected_areas}
+              onAnswer={(value) => void advance("neighborhoods", value)}
+            />
           ) : question === "must_haves" ? (
             <MultiSelectQuestion disabled={advancing} title="What would make it feel right?" options={mustHaveOptions} initial={answers.accepted_extraction?.must_haves} onAnswer={(value) => void advance("must_haves", value)} />
           ) : question === "deal_breakers" ? (
@@ -249,4 +260,13 @@ export function IntakeFlow({ agent }: { agent: Agent }) {
       </AnimatePresence>
     </BuyerViewport>
   );
+}
+
+function answerMetadata(questionId: QuestionId, value: unknown) {
+  return {
+    q_id: questionId,
+    answer_kind: Array.isArray(value) ? "array" : value === null || value === undefined || value === "" ? "empty" : typeof value,
+    ...(Array.isArray(value) ? { selected_count: value.length } : {}),
+    has_value: Array.isArray(value) ? value.length > 0 : value !== null && value !== undefined && value !== ""
+  };
 }

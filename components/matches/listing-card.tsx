@@ -1,6 +1,6 @@
 "use client";
 
-import { EyeOff, Home, LockKeyhole } from "lucide-react";
+import { ExternalLink, EyeOff, Home, LockKeyhole } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { firstName, formatCurrency } from "@/lib/formatting";
@@ -37,6 +37,11 @@ export function ListingCard({
   const canShowVideo = Boolean(
     listing.video_url && listing.video_source === "mp4" && !isStockOrDemoMedia(listing.video_url)
   );
+  const canShowExternalVideo = Boolean(
+    listing.video_url &&
+      (listing.video_source === "instagram" || listing.video_source === "tiktok") &&
+      !isStockOrDemoMedia(listing.video_url)
+  );
 
   return (
     <article aria-label={`${locationLabel} match`} className="min-h-[70svh] overflow-hidden rounded-2xl border border-warm-border bg-white shadow-soft">
@@ -61,6 +66,17 @@ export function ListingCard({
           <div className="absolute left-3 top-3 rounded-full bg-white/90 px-3 py-2 text-xs font-semibold text-[var(--agent-accent)] shadow-sm">
             Off-market — {firstName(agent.name)}&apos;s network only
           </div>
+        ) : null}
+        {canShowExternalVideo ? (
+          <a
+            className="absolute bottom-4 left-4 right-4 inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-white/92 px-4 py-3 text-sm font-semibold text-warm-text shadow-soft"
+            href={listing.video_url ?? undefined}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Watch on {listing.video_source === "tiktok" ? "TikTok" : "Instagram"}
+            <ExternalLink size={16} />
+          </a>
         ) : null}
       </div>
       <div className="p-5">
