@@ -2,6 +2,21 @@
 
 ## Priority 1
 
+- [x] Let agents edit and AI-generate their profile headline
+  - Goal: agents should be able to manually edit the buyer-facing profile headline, while still having an AI option to generate a draft from their bio/market context.
+  - Plan:
+    - [x] Add a focused authenticated dashboard endpoint that generates one headline from the current profile bio and market.
+    - [x] Expose the headline in dashboard settings as an editable field.
+    - [x] Add an AI generate action that updates the editable headline draft without blocking manual changes.
+    - [x] Add focused tests for the new route and UI affordance.
+    - [x] Run typecheck, lint/unit wrapper, e2e or targeted UI verification, and build as appropriate.
+  - Review:
+    - Added `/api/dashboard/settings/headline`, which requires the current agent and generates a single profile headline from the agent name, market, and editable bio.
+    - Added a reusable profile-headline prompt/schema/fallback in the AI layer so local and test runs still produce deterministic headline drafts with `DISABLE_AI=1`.
+    - Dashboard settings now includes an editable `Headline` field plus a `Generate` action; generated copy is saved back through the existing settings patch path and remains manually editable afterward.
+    - Added unit coverage for the route contract and settings UI affordance, and extended the desktop/mobile agent Playwright flow to verify manual headline editing and AI generation from the dashboard.
+    - Verification: `npm run typecheck`, focused headline unit test, `./scripts/test.sh` (lint, typecheck, 98 unit tests), `./scripts/e2e.sh` (12 desktop/mobile Playwright tests), and `npm run build` all passed. E2E needed local-server escalation after sandbox bind restrictions.
+
 - [x] Remove legacy hosted-DB compatibility and unused dependencies
   - Goal: delete code, configuration, and package paths that are no longer used now that production persistence is Railway Postgres with local dev-store fallback.
   - Plan:

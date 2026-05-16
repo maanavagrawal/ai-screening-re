@@ -3,6 +3,7 @@ import {
   FreeTextExtractionSchema,
   IntakeNextQuestionDecisionSchema,
   PerListingMatchReasonsSchema,
+  ProfileHeadlineSchema,
   RegenerateOpenerSchema,
   ReplyTemplatesSchema,
   VoiceGenerationSchema,
@@ -19,6 +20,7 @@ import {
   extractionPrompt,
   matchReasonsPrompt,
   nextQuestionPrompt,
+  profileHeadlinePrompt,
   regenerateOpenerPrompt,
   replyTemplatesPrompt,
   voiceGenerationPrompt,
@@ -376,6 +378,33 @@ export async function generateVoice(input: { rawText: string; market: string }) 
     );
   } catch {
     return fallbackVoiceGeneration(input);
+  }
+}
+
+export function fallbackProfileHeadline(input: { name: string; market: string; bio: string }) {
+  const firstName = input.name.split(" ")[0] || input.name;
+  const bioLead = input.bio
+    .trim()
+    .split(/[.!?]/)[0]
+    ?.replace(/\s+/g, " ")
+    .trim();
+
+  if (bioLead && bioLead.length >= 16 && bioLead.length <= 70) {
+    return { headline: `${bioLead}, helping buyers move clearly in ${input.market}.` };
+  }
+
+  return { headline: `Find your next home in ${input.market}, with ${firstName}.` };
+}
+
+export async function generateProfileHeadline(input: { name: string; market: string; bio: string }) {
+  if (!canUseAnthropic()) return fallbackProfileHeadline(input);
+  try {
+    return await generateAnthropicObject<ReturnType<typeof fallbackProfileHeadline>>(
+      ProfileHeadlineSchema,
+      profileHeadlinePrompt(input)
+    );
+  } catch {
+    return fallbackProfileHeadline(input);
   }
 }
 

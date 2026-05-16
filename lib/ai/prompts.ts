@@ -47,6 +47,28 @@ ${input.rawText}`
   };
 }
 
+export function profileHeadlinePrompt(input: { name: string; market: string; bio: string }) {
+  return {
+    system: `You write one buyer-facing real estate profile headline.
+
+Rules:
+- Return only the schema.
+- Write one headline, 8-16 words.
+- Make it specific to the agent's bio and market.
+- Sound human and plain, not corporate.
+- Avoid phrases like "trusted advisor", "dream home", "white-glove", "seamless", or "AI-powered".
+- Do not invent awards, neighborhoods, stats, or specialties not present in the input.`,
+    prompt: `Agent:
+${input.name}
+
+Market:
+${input.market}
+
+Bio:
+${input.bio}`
+  };
+}
+
 export function replyTemplatesPrompt(input: {
   agent: Agent;
   agentVoice: string;

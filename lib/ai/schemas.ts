@@ -159,6 +159,10 @@ export const VoiceGenerationSchema = z.object({
   voice_notes: z.string()
 });
 
+export const ProfileHeadlineSchema = z.object({
+  headline: z.string().min(4).max(120)
+});
+
 export const ReplyTemplateSchema = z.object({
   scenario: z.enum(["instagram_dm", "missed_call", "open_house", "zillow_lead"]),
   template_text: z.string()

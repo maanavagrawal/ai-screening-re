@@ -109,6 +109,18 @@ test("agent can publish setup, receive a lead, and work it from the dashboard", 
   await expect(page.getByText("Universal link")).toBeVisible();
   await expect(page.getByText("Instagram bio")).toBeVisible();
 
+  await page.goto("/dashboard/settings", { waitUntil: "domcontentloaded" });
+  await expect(page.getByTestId("dashboard-ready")).toHaveText("ready");
+  const headlineInput = page.getByLabel("Headline");
+  await expect(headlineInput).toHaveValue("Find your Denver home with Elena.");
+  await headlineInput.fill("Manual headline for Denver buyers.");
+  await page.keyboard.press("Tab");
+  await expect(page.getByText("Settings saved")).toBeVisible();
+  await expect(headlineInput).toHaveValue("Manual headline for Denver buyers.");
+  await page.getByRole("button", { name: "Generate" }).click();
+  await expect(page.getByText("Headline generated")).toBeVisible();
+  await expect(headlineInput).toHaveValue(/Denver buyer advisor/);
+
   await page.goto("/dashboard/listings", { waitUntil: "domcontentloaded" });
   await expect(page.getByTestId("dashboard-ready")).toHaveText("ready");
   await expect(page.getByText("123 Maple Street")).toBeVisible();

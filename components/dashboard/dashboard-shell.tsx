@@ -19,6 +19,7 @@ import {
   Search,
   Settings,
   Trash2,
+  Wand2,
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -192,7 +193,7 @@ export function DashboardShell({
         ) : null}
         {section === "listings" ? <ListingsSection listings={listings} setListings={setListings} /> : null}
         {section === "distribution" ? <DistributionSection agent={agent} distribution={distribution} qr={qr} baseUrl={baseUrl} copy={copy} /> : null}
-        {section === "settings" ? <SettingsSection agent={agent} setAgent={setAgent} copy={copy} /> : null}
+        {section === "settings" ? <SettingsSection agent={agent} setAgent={setAgent} notify={showToast} /> : null}
       </div>
 
       {commandOpen ? <CommandPalette onClose={() => setCommandOpen(false)} copy={() => copy(url)} /> : null}
@@ -933,9 +934,11 @@ function DistributionSection({ agent, distribution, qr, baseUrl, copy }: { agent
   );
 }
 
-function SettingsSection({ agent, setAgent, copy }: { agent: Agent; setAgent: (agent: Agent) => void; copy: (text: string, message?: string) => void }) {
+function SettingsSection({ agent, setAgent, notify }: { agent: Agent; setAgent: (agent: Agent) => void; notify: (message: string) => void }) {
   const [form, setForm] = useState(agent);
-  async function save(patch: Partial<Agent>) {
+  const [generatingHeadline, setGeneratingHeadline] = useState(false);
+
+  async function save(patch: Partial<Agent>, message = "Settings saved") {
     const response = await fetch("/api/dashboard/settings", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -945,15 +948,51 @@ function SettingsSection({ agent, setAgent, copy }: { agent: Agent; setAgent: (a
     if (response.ok) {
       setAgent(json.agent);
       setForm(json.agent);
-      copy("saved", "Settings saved");
+      notify(message);
+    } else {
+      notify(json.error ?? "Settings could not be saved");
     }
   }
+
+  async function generateHeadline() {
+    const bio = form.bio?.trim();
+    if (!bio) {
+      notify("Add a bio first");
+      return;
+    }
+
+    setGeneratingHeadline(true);
+    try {
+      const response = await fetch("/api/dashboard/settings/headline", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bio, market: form.market })
+      });
+      const json = await response.json();
+      if (!response.ok || !json.headline) {
+        notify(json.error ?? "Headline could not be generated");
+        return;
+      }
+
+      setForm((current) => ({ ...current, headline: json.headline }));
+      await save({ headline: json.headline }, "Headline generated");
+    } finally {
+      setGeneratingHeadline(false);
+    }
+  }
+
   return (
     <section className="mx-auto max-w-3xl space-y-5 p-5">
       <h1 className="font-serif text-4xl">Settings</h1>
       <div className="grid gap-4 rounded-2xl border border-warm-border bg-white p-5">
         <SettingsInput label="Name" value={form.name} onChange={(name) => setForm({ ...form, name })} onBlur={() => save({ name: form.name })} />
         <SettingsInput label="Market" value={form.market} onChange={(market) => setForm({ ...form, market })} onBlur={() => save({ market: form.market })} />
+        <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+          <SettingsInput label="Headline" value={form.headline ?? ""} onChange={(headline) => setForm({ ...form, headline })} onBlur={() => save({ headline: form.headline })} />
+          <Button type="button" variant="secondary" className="w-full gap-2 sm:w-auto" disabled={generatingHeadline || !form.bio?.trim()} onClick={generateHeadline}>
+            <Wand2 size={16} /> {generatingHeadline ? "Generating..." : "Generate"}
+          </Button>
+        </div>
         <SettingsArea label="Bio" value={form.bio ?? ""} onChange={(bio) => setForm({ ...form, bio })} onBlur={() => save({ bio: form.bio })} />
         <SettingsArea label="Voice notes" value={form.voice_notes ?? ""} onChange={(voice_notes) => setForm({ ...form, voice_notes })} onBlur={() => save({ voice_notes: form.voice_notes })} />
         <SettingsInput label="Phone" value={form.phone ?? ""} onChange={(phone) => setForm({ ...form, phone })} onBlur={() => save({ phone: form.phone })} />
