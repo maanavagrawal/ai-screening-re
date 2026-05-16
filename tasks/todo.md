@@ -2,6 +2,21 @@
 
 ## Priority 1
 
+- [x] Make ATTOM and Google Places required feature providers
+  - Goal: ATTOM property facts and Google Places buyer area autocomplete are core product features, so missing keys must fail loudly instead of silently degrading into fixture/manual-only behavior.
+  - Plan:
+    - [x] Add shared provider config errors and health reporting for required provider keys.
+    - [x] Require `ATTOM_API_KEY` before runtime listing property lookup.
+    - [x] Require `GOOGLE_PLACES_API_KEY` before runtime typed location search.
+    - [x] Keep fixture helpers available only for explicit tests/local helper calls, not runtime missing-key fallback.
+    - [x] Update `.env.example`, tests, and project lessons.
+  - Review:
+    - `/api/listing-property-search` now returns a `503` config error if `ATTOM_API_KEY` is missing; ATTOM no-match responses use `manual` source instead of fake fixture mode.
+    - `/api/intake/location-search` now returns a `503` config error if `GOOGLE_PLACES_API_KEY` is missing; configured Google no-results can still fall back to agent/manual suggestions.
+    - `/api/health` now reports required provider status and returns `503` when either key is missing.
+    - `.env.example` marks both provider keys as required.
+    - Verification: `./scripts/test.sh` passed with lint, typecheck, and 96 unit tests. `./scripts/e2e.sh` passed with 12 desktop/mobile Playwright tests after one transient desktop root-link rerun. `npm run build` passed.
+
 - [x] Repo-wide hardening review and fixes
   - Goal: review the current app for concrete security bugs, correctness gaps, dependency vulnerabilities, and inconsistent UI state; fix the actionable issues rather than leaving a report-only review.
   - Plan:

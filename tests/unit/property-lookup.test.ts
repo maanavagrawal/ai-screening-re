@@ -1,7 +1,12 @@
-import { describe, expect, it } from "vitest";
-import { fixturePropertyLookup, normalizeAttomProperty } from "@/lib/property/lookup";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { fixturePropertyLookup, lookupPropertyByAddress, normalizeAttomProperty } from "@/lib/property/lookup";
 
 describe("property lookup normalization", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllEnvs();
+  });
+
   it("normalizes ATTOM payloads into internal listing enrichment fields", () => {
     const result = normalizeAttomProperty(
       {
@@ -39,5 +44,28 @@ describe("property lookup normalization", () => {
     expect(result.propertyMatchConfidence).toBeLessThan(0.5);
     expect(result.propertyFacts).toEqual({});
     expect(result.normalizedAddress?.state).toBe("TX");
+  });
+
+  it("requires ATTOM_API_KEY for runtime property lookup", async () => {
+    vi.stubEnv("ATTOM_API_KEY", "");
+
+    await expect(lookupPropertyByAddress("1811 Willow Creek Drive, Austin, TX 78702")).rejects.toThrow(
+      "ATTOM_API_KEY is required for listing property lookup."
+    );
+  });
+
+  it("uses manual mode instead of fixture mode when ATTOM has no matching property", async () => {
+    vi.stubEnv("ATTOM_API_KEY", "attom-test-key");
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ property: [] }), {
+        status: 200,
+        headers: { "content-type": "application/json" }
+      })
+    );
+
+    const result = await lookupPropertyByAddress("1811 Willow Creek Drive, Austin, TX 78702");
+
+    expect(result.propertyDataSource).toBe("manual");
+    expect(result.message).toContain("No ATTOM match");
   });
 });

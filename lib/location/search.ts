@@ -1,4 +1,5 @@
 import type { Agent, Listing, SelectedArea } from "@/lib/types";
+import { ProviderRequestError, requiredProviderEnv } from "@/lib/provider-config";
 
 export type LocationSuggestion = SelectedArea & {
   attribution?: "google" | "agent" | "manual";
@@ -22,8 +23,8 @@ export async function searchLocationSuggestions(input: {
   listings?: Listing[];
 }): Promise<LocationSuggestion[]> {
   const query = input.query.trim();
-  const apiKey = process.env.GOOGLE_PLACES_API_KEY;
-  if (apiKey && query.length >= 2) {
+  const apiKey = requiredProviderEnv("GOOGLE_PLACES_API_KEY", "buyer area autocomplete");
+  if (query.length >= 2) {
     const google = await googleLocationSuggestions(query, apiKey);
     if (google.length) return google;
   }
@@ -90,7 +91,9 @@ async function googleLocationSuggestions(query: string, apiKey: string): Promise
     cache: "no-store"
   });
 
-  if (!response.ok) return [];
+  if (!response.ok) {
+    throw new ProviderRequestError("Google Places", `Google Places lookup failed with ${response.status}`);
+  }
   const payload = (await response.json()) as { suggestions?: GoogleSuggestion[] };
   const suggestions: LocationSuggestion[] = [];
   for (const suggestion of payload.suggestions ?? []) {

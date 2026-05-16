@@ -1,4 +1,5 @@
 import type { ListingPayload, NormalizedAddress, PropertyFacts } from "@/lib/types";
+import { ProviderRequestError, requiredProviderEnv } from "@/lib/provider-config";
 
 export type PropertyLookupResult = Pick<
   ListingPayload,
@@ -22,8 +23,7 @@ export async function lookupPropertyByAddress(address: string): Promise<Property
     throw new Error("Address is required");
   }
 
-  const apiKey = process.env.ATTOM_API_KEY;
-  if (!apiKey) return fixturePropertyLookup(cleanAddress);
+  const apiKey = requiredProviderEnv("ATTOM_API_KEY", "listing property lookup");
 
   const url = new URL(process.env.ATTOM_API_BASE_URL || ATTOM_BASE_URL);
   const { address1, address2 } = splitAddress(cleanAddress);
@@ -42,13 +42,17 @@ export async function lookupPropertyByAddress(address: string): Promise<Property
     cache: "no-store"
   });
 
+  if (response.status === 404) {
+    return manualPropertyLookup(cleanAddress, "No ATTOM match found. Keep the manual fields below.");
+  }
+
   if (!response.ok) {
-    throw new Error(`ATTOM lookup failed with ${response.status}`);
+    throw new ProviderRequestError("ATTOM", `ATTOM lookup failed with ${response.status}`);
   }
 
   const payload = (await response.json()) as Record<string, unknown>;
   const property = firstProperty(payload);
-  if (!property) return fixturePropertyLookup(cleanAddress, "No ATTOM match found. Keep the manual fields below.");
+  if (!property) return manualPropertyLookup(cleanAddress, "No ATTOM match found. Keep the manual fields below.");
 
   return normalizeAttomProperty(property, cleanAddress);
 }
@@ -98,12 +102,25 @@ export function normalizeAttomProperty(property: AttomProperty, fallbackAddress:
 }
 
 export function fixturePropertyLookup(address: string, message = "Property lookup is in fixture mode. Review and fill any missing facts."): PropertyLookupResult {
+  return basePropertyLookup(address, "fixture", 0.35, message);
+}
+
+export function manualPropertyLookup(address: string, message = "No provider facts found. Review and fill the fields manually."): PropertyLookupResult {
+  return basePropertyLookup(address, "manual", 0.3, message);
+}
+
+function basePropertyLookup(
+  address: string,
+  propertyDataSource: "fixture" | "manual",
+  propertyMatchConfidence: number,
+  message: string
+): PropertyLookupResult {
   const { city, state, postalCode } = looseAddressParts(address);
   return {
     attomId: null,
-    propertyDataSource: "fixture",
+    propertyDataSource,
     propertyEnrichedAt: new Date().toISOString(),
-    propertyMatchConfidence: 0.35,
+    propertyMatchConfidence,
     normalizedAddress: {
       line1: address.split(",")[0]?.trim() || address,
       city,
