@@ -2,6 +2,54 @@
 
 ## Priority 1
 
+- [x] Expose agent listing edit and delete in the dashboard
+  - Goal: agents can add, edit, and delete their listings from `/dashboard/listings`; add is already present but needs to remain covered while edit/delete are surfaced.
+  - Plan:
+    - [x] Reuse the existing dashboard listing `POST`, `PATCH`, and `DELETE` APIs instead of creating a second management path.
+    - [x] Add inline edit state for listing cards with the same fields as the add form, including property lookup enrichment and video metadata.
+    - [x] Add delete controls with clear pending/error states and state updates that cannot delete another agent's listing.
+    - [x] Add focused tests for the listing management APIs and update e2e coverage for add/edit/delete.
+    - [x] Run the project verification commands and browser-check the listings screen.
+  - Review:
+    - Implemented dashboard add/edit/delete through the existing listing API routes. Edits preserve feature/deal-breaker metadata, description, pocket status, video fields, and property enrichment rather than wiping hidden listing fields.
+    - Tightened delete semantics so scoped deletes return `404` when the listing does not belong to the signed-in agent or does not exist.
+    - Changed the root role "Continue to agent" action from a client push button to a real link after Playwright exposed intermittent navigation misses.
+    - Verification: `./scripts/test.sh` passed with lint, typecheck, and 76 unit tests. `./scripts/e2e.sh` passed with 12 desktop/mobile Playwright tests, including add, edit, and delete from `/dashboard/listings`.
+    - Note: gstack `/browse` is not built in this workspace, so live browser verification used the repo Playwright browser suite.
+
+- [x] Create clearer product WebP demo
+  - Goal: produce a concise animated WebP product demo from the existing demo recordings that preserves whole-screen context and tells a coherent product story.
+  - Plan:
+    - [x] Use the existing desktop and buyer demo videos in `demo-output` as source material.
+    - [x] Keep the final cut moderately short, with full-frame scenes for agent setup, listings, public buyer page, lead context, dashboard follow-up, and buyer showing request.
+    - [x] Add a small cursor-style pointer overlay to guide attention through each moment without heavy zooming.
+    - [x] Remove the local dev issues badge from the dashboard segment.
+    - [x] Verify duration, dimensions, file size, and that the final artifact opens as an animated WebP.
+  - Review:
+    - Superseded first result: `demo-output/ai-screening-re-short-demo.webp` was too zoomed in and did not explain the user flow clearly enough.
+    - Replacement result: overwrote `demo-output/ai-screening-re-short-demo.webp` with a calmer full-context story cut.
+    - Follow-up fix: the red dashboard badge came from Next's development overlay reporting invalid nested `<button>` markup in the dashboard lead row. Fixed `components/dashboard/dashboard-shell.tsx` so the lead row open action and icon actions are sibling buttons, then rerendered the demo with the baked-in badge masked from the old source clip.
+    - Verification: `webpmux -info` reports 1024 x 720 canvas, 400 frames, 100 ms per frame, loop count 0; `ls -lh` reports 8.1M. Extracted representative frames with `webpmux` and converted them with `sips` to spot-check setup, listings, lead preview, dashboard follow-up, match card, and phone verification scenes. Recreated the dashboard flow in local Next dev and confirmed the nested-button hydration errors disappeared; only a non-blocking image priority warning remained. `npm run lint` and `npm run typecheck` pass.
+    - Note: gstack browse was not built in this workspace, so visual verification used native WebP frame extraction instead of browser playback.
+
+- [x] Improve listing upload, location-aware intake, dashboard preference summaries, and anonymous intake analytics
+  - Goal: make agent listing entry much faster using ATTOM property facts, make buyer area selection more accurate from typed location, and make dashboard lead context readable and actionable.
+  - Plan: [Listing/location/dashboard implementation plan](./listing-location-dashboard-plan.md).
+  - Review pipeline:
+    - [x] /plan-ceo-review
+    - [x] /plan-design-review formal gstack review logged; visual mockups attempted but blocked by OpenAI organization verification
+    - [x] /plan-eng-review formal gstack review logged; Codex outside voice run and incorporated
+  - Scope boundary: implement the current ATTOM, typed location, listing enrichment, buyer media behavior, dashboard summary, activity labels, and anonymous drop-off analytics task only. Do not add marketplace, scraping, browser geolocation, MLS/IDX, seller valuation, or anonymous lead rows.
+  - Review:
+    - Implemented a server-only listing enrichment spine: ATTOM-backed property lookup with fixture fallback, normalized listing facts, Railway/Supabase/dev-store persistence, setup onboarding support, and dashboard listing create/update support.
+    - Added typed buyer location intake with structured `selected_areas`, legacy `neighborhoods` compatibility, manual/provider fallbacks, and readable dashboard preference summaries.
+    - Hardened buyer-facing privacy with allowlist listing serialization and buyer-safe AI prompt inputs so exact addresses, ATTOM IDs, normalized addresses, and property facts do not leak.
+    - Updated listing media behavior so direct MP4 links still autoplay, while Instagram/TikTok links render as official external links only. No permission checkbox was added per user decision.
+    - Added privacy-safe anonymous drop-off analytics from existing session events, including converted sessions whose events later receive a `lead_id`, without creating anonymous lead rows.
+    - Design review after implementation: checked setup lookup, dashboard analytics, desktop buyer location intake, mobile buyer location intake, and buyer address redaction in a live local app; screenshots were captured under `/private/tmp`.
+    - Engineering review after implementation: added focused unit coverage for provider fallback, event sanitization, drop-off aggregation, preference summaries, location matching, buyer redaction, media behavior, and setup-time property lookup auth.
+    - Verification: `./scripts/test.sh` passed with lint, typecheck, and 78 unit tests. `./scripts/e2e.sh` passed with 12 desktop/mobile Playwright tests. `git diff --check` passed.
+
 - [x] Add role-aware root entry and returning-agent login resume
   - Goal: the base domain should route visitors by intent instead of forcing every logged-out agent back through setup.
   - Design review result: 4/10 -> 9/10 after specifying information architecture, states, emotional journey, anti-slop rules, responsive/a11y behavior, auth routing, and verification. Mockups were not generated because the gstack designer binary is not installed in this workspace.
