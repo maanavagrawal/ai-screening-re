@@ -52,7 +52,7 @@ export function PreapprovalUploadQuestion({
           });
           if (!uploadResponse.ok) throw new Error("Upload failed.");
         }
-        onAnswer(data.signedUrl ?? data.path ?? null);
+        onAnswer(null);
       } catch {
         setError("We could not upload that file. You can try again or send it later.");
       } finally {

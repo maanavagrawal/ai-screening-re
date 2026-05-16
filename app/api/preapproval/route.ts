@@ -4,11 +4,12 @@ import { parseJsonBody } from "@/lib/api/validation";
 import { logEvents } from "@/lib/events";
 import { getServiceSupabase } from "@/lib/supabase/service";
 import { resolveAgentBySlug } from "@/lib/resolve-agent";
+import { safeStoragePathSegment, safeUploadFileName } from "@/lib/uploads";
 
 const BodySchema = z.object({
   agent_slug: z.string().min(1),
-  session_id: z.string().min(8),
-  file_name: z.string().min(1),
+  session_id: z.string().min(8).max(160),
+  file_name: z.string().min(1).max(220),
   content_type: z.string().min(1)
 });
 
@@ -23,7 +24,7 @@ export async function POST(request: Request) {
   const allowed = body.content_type === "application/pdf" || body.content_type.startsWith("image/");
   if (!allowed) return NextResponse.json({ error: "Only PDF and image uploads are allowed" }, { status: 400 });
 
-  const path = `${agent.id}/${body.session_id}/${crypto.randomUUID()}-${body.file_name}`;
+  const path = `${agent.id}/${safeStoragePathSegment(body.session_id, "session")}/${crypto.randomUUID()}-${safeUploadFileName(body.file_name)}`;
   const supabase = getServiceSupabase();
 
   if (!supabase) {

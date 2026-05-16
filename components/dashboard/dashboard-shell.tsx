@@ -30,6 +30,7 @@ import type { DropoffAnalytics } from "@/lib/dashboard/dropoff";
 import { preferenceSummary } from "@/lib/dashboard/preference-summary";
 import { cn, formatCurrency } from "@/lib/formatting";
 import { isSellerLead, sellerDetails } from "@/lib/lead-intent";
+import { clearedListingEnrichment } from "@/lib/listing-enrichment";
 import type { Agent, DashboardLead, Listing, ListingPayload, NotificationPreferences } from "@/lib/types";
 import type { PropertyLookupResult } from "@/lib/property/lookup";
 
@@ -680,18 +681,23 @@ function ListingForm({
   async function lookupProperty() {
     if (!draft.address.trim()) return;
     setLookupBusy(true);
-    const response = await fetch("/api/listing-property-search", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ address: draft.address })
-    });
-    const json = (await response.json().catch(() => null)) as { result?: PropertyLookupResult; error?: string } | null;
-    setLookupBusy(false);
-    if (response.ok && json?.result) {
-      setLookupResult(json.result);
-      setLookupMessage(json.result.message);
-    } else {
-      setLookupMessage(json?.error ?? "Could not look up property facts.");
+    try {
+      const response = await fetch("/api/listing-property-search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ address: draft.address })
+      });
+      const json = (await response.json().catch(() => null)) as { result?: PropertyLookupResult; error?: string } | null;
+      if (response.ok && json?.result) {
+        setLookupResult(json.result);
+        setLookupMessage(json.result.message);
+      } else {
+        setLookupMessage(json?.error ?? "Could not look up property facts.");
+      }
+    } catch {
+      setLookupMessage("Could not look up property facts.");
+    } finally {
+      setLookupBusy(false);
     }
   }
 
@@ -728,7 +734,12 @@ function ListingForm({
           </Button>
         ) : null}
       </div>
-      <DashboardListingInput className="sm:col-span-2" label="Address" value={draft.address} onChange={(address) => setDraft((current) => ({ ...current, address }))} />
+      <DashboardListingInput
+        className="sm:col-span-2"
+        label="Address"
+        value={draft.address}
+        onChange={(address) => setDraft((current) => ({ ...current, address, enrichment: clearedListingEnrichment() }))}
+      />
       <Button className="gap-2" variant="secondary" disabled={!draft.address || lookupBusy} onClick={lookupProperty}>
         <Search size={16} />
         {lookupBusy ? "Looking..." : "Lookup facts"}

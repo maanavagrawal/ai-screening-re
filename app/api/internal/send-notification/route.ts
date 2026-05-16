@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { parseJsonBody } from "@/lib/api/validation";
+import { requireInternalRequest } from "@/lib/internal-auth";
 import { sendAgentNotification } from "@/lib/notifications";
 import { findLeadById } from "@/lib/leads";
 import { getListingForAgent } from "@/lib/listings";
@@ -15,6 +16,9 @@ const BodySchema = z.object({
 });
 
 export async function POST(request: Request) {
+  const unauthorized = requireInternalRequest(request);
+  if (unauthorized) return unauthorized;
+
   const parsed = await parseJsonBody(request, BodySchema);
   if ("response" in parsed) return parsed.response;
 
@@ -25,4 +29,3 @@ export async function POST(request: Request) {
   const listing = parsed.data.listing_id ? await getListingForAgent(agent.id, parsed.data.listing_id) : null;
   return NextResponse.json(await sendAgentNotification({ agent, lead, listing, kind: parsed.data.kind, message: parsed.data.message }));
 }
-

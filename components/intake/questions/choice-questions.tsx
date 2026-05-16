@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ChoiceGrid, ContinueButton, QuestionFrame } from "@/components/intake/primitives";
 import type { SelectedArea } from "@/lib/types";
 
@@ -175,27 +175,44 @@ export function LocationQuestion({
   const [selected, setSelected] = useState<SelectedArea[]>(initial ?? []);
   const [openToSuggestions, setOpenToSuggestions] = useState(false);
   const [loading, setLoading] = useState(false);
+  const requestSeq = useRef(0);
 
   useEffect(() => {
     const trimmed = query.trim();
+    const seq = requestSeq.current + 1;
+    requestSeq.current = seq;
     if (!trimmed) {
       setSuggestions(initialSuggestions);
+      setLoading(false);
       return;
     }
 
+    const controller = new AbortController();
     const timeout = window.setTimeout(async () => {
       setLoading(true);
-      const response = await fetch("/api/intake/location-search", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agent_slug: agentSlug, query: trimmed })
-      });
-      const body = (await response.json().catch(() => null)) as { suggestions?: LocationSuggestion[] } | null;
-      setLoading(false);
-      if (response.ok && body?.suggestions) setSuggestions(body.suggestions);
+      try {
+        const response = await fetch("/api/intake/location-search", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ agent_slug: agentSlug, query: trimmed }),
+          signal: controller.signal
+        });
+        const body = (await response.json().catch(() => null)) as { suggestions?: LocationSuggestion[] } | null;
+        if (requestSeq.current !== seq) return;
+        setSuggestions(response.ok && body?.suggestions ? body.suggestions : [manualLocationSuggestion(trimmed)]);
+      } catch {
+        if (!controller.signal.aborted && requestSeq.current === seq) {
+          setSuggestions([manualLocationSuggestion(trimmed)]);
+        }
+      } finally {
+        if (requestSeq.current === seq) setLoading(false);
+      }
     }, 180);
 
-    return () => window.clearTimeout(timeout);
+    return () => {
+      controller.abort();
+      window.clearTimeout(timeout);
+    };
   }, [agentSlug, initialSuggestions, query]);
 
   function toggle(area: SelectedArea) {
@@ -278,4 +295,13 @@ export function LocationQuestion({
       </ContinueButton>
     </QuestionFrame>
   );
+}
+
+function manualLocationSuggestion(label: string): LocationSuggestion {
+  return {
+    label,
+    source: "manual",
+    type: "custom",
+    attribution: "manual"
+  };
 }

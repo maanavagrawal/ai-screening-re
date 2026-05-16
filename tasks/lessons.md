@@ -35,3 +35,5 @@
 - For listing media, do not add extra permission-checkbox friction. Treat agent-uploaded or direct agent-provided MP4 media as intentional listing media, but do not scrape social/listing-site URLs into hosted MP4s.
 - Product demo WebPs should preserve whole-screen context unless the user explicitly asks for tight crops. Use cursor movement and a coherent user-flow sequence for emphasis before resorting to zoomed-in framing.
 - Product demos must not show local development overlays such as Next.js issue badges. Re-record from a clean production-like surface or mask the overlay in the demo render before delivery.
+- Client-supplied `lead_id` is never enough to authorize buyer mutations or analytics side effects. Verify the lead belongs to the resolved agent and the current buyer session before logging lead-bound events, sending verification SMS, requesting showings, or recomputing lead temperature.
+- Routes under `/api/internal/*` need explicit internal authentication in production. Local dev can remain ergonomic, but production should fail closed if `INTERNAL_API_SECRET` is absent.

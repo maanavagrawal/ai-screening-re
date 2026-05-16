@@ -41,6 +41,18 @@ export const ListingEnrichmentSchema = z.object({
 
 export type ListingEnrichmentInput = z.infer<typeof ListingEnrichmentSchema>;
 
+export function clearedListingEnrichment(): ListingEnrichmentInput {
+  return {
+    attomId: null,
+    propertyDataSource: null,
+    propertyEnrichedAt: null,
+    propertyMatchConfidence: null,
+    normalizedAddress: null,
+    propertyFacts: null,
+    propertyOverrideFields: []
+  };
+}
+
 export function enrichmentToRow(input: Partial<ListingPayload>) {
   return {
     ...(input.attomId !== undefined ? { attom_id: input.attomId ?? null } : {}),

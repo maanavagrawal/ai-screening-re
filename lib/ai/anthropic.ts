@@ -11,6 +11,7 @@ import {
   type IntakeAnswers,
   type QuestionId
 } from "@/lib/ai/schemas";
+import type { z } from "zod";
 import { fallbackNextQuestion, safeNextQuestionDecision } from "@/lib/intake/next-question";
 import {
   agentBriefPrompt,
@@ -47,7 +48,7 @@ async function withAiTimeout<T>(promise: Promise<T>): Promise<T> {
 }
 
 async function generateAnthropicObject<T>(
-  schema: unknown,
+  schema: z.ZodType<T>,
   prompt: { system: string; prompt: string }
 ): Promise<T> {
   const [{ anthropic }, { generateObject }] = await Promise.all([
@@ -57,11 +58,11 @@ async function generateAnthropicObject<T>(
   const { object } = await withAiTimeout(
     generateObject({
       model: anthropic(MODEL),
-      schema: schema as never,
+      schema,
       ...prompt
     })
   );
-  return object as T;
+  return object;
 }
 
 const emptyConfidence = {

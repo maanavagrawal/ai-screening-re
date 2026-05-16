@@ -21,6 +21,7 @@ import { Button, LinkButton } from "@/components/ui/button";
 import { SetupPreview } from "@/components/setup/setup-preview";
 import { DEAL_BREAKERS, MUST_HAVES } from "@/lib/constants";
 import { cn, formatCurrency } from "@/lib/formatting";
+import { clearedListingEnrichment } from "@/lib/listing-enrichment";
 import type { AgentSetupDraftData, ListingPayload } from "@/lib/types";
 import type { PropertyLookupResult } from "@/lib/property/lookup";
 
@@ -696,19 +697,33 @@ function ListingEditor(props: {
   async function lookupProperty() {
     if (!props.listing.address) return;
     setPropertyBusy(true);
-    const response = await fetch("/api/listing-property-search", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ address: props.listing.address })
-    });
-    const json = (await response.json().catch(() => null)) as { result?: PropertyLookupResult; error?: string } | null;
-    setPropertyBusy(false);
-    if (response.ok && json?.result) {
-      setPropertyResult(json.result);
-      await props.patch(props.index, { propertyLookupMessage: json.result.message });
-    } else {
-      await props.patch(props.index, { propertyLookupMessage: json?.error ?? "Could not look up property facts." });
+    try {
+      const response = await fetch("/api/listing-property-search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ address: props.listing.address })
+      });
+      const json = (await response.json().catch(() => null)) as { result?: PropertyLookupResult; error?: string } | null;
+      if (response.ok && json?.result) {
+        setPropertyResult(json.result);
+        await props.patch(props.index, { propertyLookupMessage: json.result.message });
+      } else {
+        await props.patch(props.index, { propertyLookupMessage: json?.error ?? "Could not look up property facts." });
+      }
+    } catch {
+      await props.patch(props.index, { propertyLookupMessage: "Could not look up property facts." });
+    } finally {
+      setPropertyBusy(false);
     }
+  }
+
+  async function updateAddress(address: string) {
+    setPropertyResult(null);
+    await props.patch(props.index, {
+      address,
+      ...clearedListingEnrichment(),
+      propertyLookupMessage: undefined
+    });
   }
 
   async function applyPropertyFacts(result: PropertyLookupResult) {
@@ -787,7 +802,7 @@ function ListingEditor(props: {
         {props.listing.extractDetailsMessage ? <p className="mt-2 text-sm text-warm-muted">{props.listing.extractDetailsMessage}</p> : null}
       </div>
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
-        <SmallInput label="Address" value={props.listing.address ?? ""} onChange={(address) => props.patch(props.index, { address })} className="sm:col-span-2" />
+        <SmallInput label="Address" value={props.listing.address ?? ""} onChange={(address) => void updateAddress(address)} className="sm:col-span-2" />
         <SmallInput label="Price" value={props.listing.price ? String(props.listing.price) : ""} onChange={(price) => props.patch(props.index, { price: Number(price.replace(/\D/g, "")) || undefined })} />
         <SmallInput label="Neighborhood" value={props.listing.neighborhood ?? ""} onChange={(neighborhood) => props.patch(props.index, { neighborhood })} />
         <SmallInput label="Beds" value={props.listing.beds != null ? String(props.listing.beds) : ""} onChange={(beds) => props.patch(props.index, { beds: Number(beds) || undefined })} />

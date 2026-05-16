@@ -3,6 +3,7 @@ import { z } from "zod";
 import { parseJsonBody } from "@/lib/api/validation";
 import { setDevVerifyCode } from "@/lib/dev-store";
 import { logEvents } from "@/lib/events";
+import { hasLeadSession } from "@/lib/lead-session-auth";
 import { findLeadById } from "@/lib/leads";
 import { resolveAgentBySlug } from "@/lib/resolve-agent";
 import { twilioVerifyFailure } from "@/lib/twilio-errors";
@@ -32,6 +33,7 @@ export async function POST(request: Request) {
 
   const lead = await findLeadById(body.lead_id);
   if (!lead || lead.agent_id !== agent.id) return NextResponse.json({ error: "Lead not found" }, { status: 404 });
+  if (!(await hasLeadSession(lead))) return NextResponse.json({ error: "Lead session not found" }, { status: 403 });
 
   if (canUseTwilio()) {
     const { default: twilio } = await import("twilio");

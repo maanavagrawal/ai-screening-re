@@ -4,6 +4,7 @@ import { parseJsonBody } from "@/lib/api/validation";
 import { addDevShowingRequest } from "@/lib/dev-store";
 import { hasPostgresEnv, query } from "@/lib/db/postgres";
 import { logEvents } from "@/lib/events";
+import { hasLeadSession } from "@/lib/lead-session-auth";
 import { findLeadById, recomputeLeadTemperature, updateLead } from "@/lib/leads";
 import { getListingForAgent } from "@/lib/listings";
 import { resolveAgentBySlug } from "@/lib/resolve-agent";
@@ -28,6 +29,7 @@ export async function POST(request: Request) {
 
   const lead = await findLeadById(body.lead_id);
   if (!lead || lead.agent_id !== agent.id) return NextResponse.json({ error: "Lead not found" }, { status: 404 });
+  if (!(await hasLeadSession(lead))) return NextResponse.json({ error: "Lead session not found" }, { status: 403 });
   const listing = await getListingForAgent(agent.id, body.listing_id);
   if (!listing) return NextResponse.json({ error: "Listing not found" }, { status: 404 });
   if (!lead.phone_verified) return NextResponse.json({ error: "Phone must be verified first" }, { status: 400 });

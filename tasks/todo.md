@@ -2,6 +2,24 @@
 
 ## Priority 1
 
+- [x] Repo-wide hardening review and fixes
+  - Goal: review the current app for concrete security bugs, correctness gaps, dependency vulnerabilities, and inconsistent UI state; fix the actionable issues rather than leaving a report-only review.
+  - Plan:
+    - [x] Run security-oriented diff/repo review and production dependency audit.
+    - [x] Remove known production dependency vulnerabilities without jumping to unstable major app behavior.
+    - [x] Lock down internal mutation routes and buyer lead mutation paths.
+    - [x] Fix stale listing enrichment, upload path sanitization, and location autocomplete race behavior.
+    - [x] Add focused tests for the hardening changes.
+    - [x] Re-run lint, typecheck, unit, e2e, audit, and build verification.
+  - Review:
+    - Upgraded `ai`, `@ai-sdk/anthropic`, and `next`, and added a Next `postcss` override so `npm audit --omit=dev --audit-level=moderate` reports 0 production vulnerabilities.
+    - Added internal API secret enforcement for `/api/internal/*`, with production fail-closed behavior when `INTERNAL_API_SECRET` is missing.
+    - Added buyer lead/session cookie authorization for SMS verification and showing-request mutations, and validated `/api/events` lead ownership/session before attaching events or recomputing lead temperature.
+    - Sanitized preapproval upload path pieces and stopped storing signed upload URLs in buyer intake answers.
+    - Cleared persisted property enrichment whenever setup/dashboard listing addresses are edited, and made property lookup busy states recover after fetch failures.
+    - Made typed location autocomplete abort/order-safe so stale provider responses cannot overwrite newer suggestions.
+    - Verification: `npm run lint`, `npm run typecheck`, `npm test` (89 unit tests), `./scripts/test.sh`, `npm audit --omit=dev --audit-level=moderate`, `./scripts/e2e.sh` (12 desktop/mobile Playwright tests), and `npm run build` all passed. Audit/build/e2e required network/local-server escalation after sandbox DNS/bind restrictions.
+
 - [x] Expose agent listing edit and delete in the dashboard
   - Goal: agents can add, edit, and delete their listings from `/dashboard/listings`; add is already present but needs to remain covered while edit/delete are surfaced.
   - Plan:
