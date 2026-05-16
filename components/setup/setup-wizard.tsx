@@ -1,7 +1,7 @@
 "use client";
 
 /* eslint-disable @next/next/no-img-element */
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type FocusEvent } from "react";
 import { useRouter } from "next/navigation";
 import { useDropzone } from "react-dropzone";
 import QRCode from "qrcode";
@@ -856,6 +856,7 @@ function ListingEditor(props: {
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   const [suggestionsBusy, setSuggestionsBusy] = useState(false);
   const [detailsUnlocked, setDetailsUnlocked] = useState(() => listingDetailsUnlocked(props.listing));
+  const skipNextAddressBlurCommit = useRef(false);
 
   useEffect(() => {
     const nextAddress = props.listing.address ?? "";
@@ -941,6 +942,7 @@ function ListingEditor(props: {
 
   async function commitAddress(address: string) {
     const cleanAddress = address.trim();
+    if (cleanAddress === lastSyncedAddress.current) return;
     lastSyncedAddress.current = cleanAddress;
     await props.patch(props.index, {
       address: cleanAddress,
@@ -982,6 +984,19 @@ function ListingEditor(props: {
     await props.extractDetails(props.index, sourceText);
   }
 
+  function handleAddressBlur(event: FocusEvent<HTMLInputElement>) {
+    const nextTarget = event.relatedTarget;
+    const leavingForLookup =
+      nextTarget instanceof HTMLElement &&
+      nextTarget.dataset.setupLookupButton === String(props.index);
+    window.setTimeout(() => setSuggestionsOpen(false), 120);
+    if (leavingForLookup || skipNextAddressBlurCommit.current) {
+      skipNextAddressBlurCommit.current = false;
+      return;
+    }
+    void commitAddress(addressInput);
+  }
+
   const showDetails = detailsUnlocked || listingDetailsUnlocked(props.listing);
 
   return (
@@ -1005,10 +1020,7 @@ function ListingEditor(props: {
               suggestionsBusy={suggestionsBusy}
               onChange={updateAddress}
               onFocus={() => setSuggestionsOpen(addressInput.trim().length >= 3)}
-              onBlur={() => {
-                void commitAddress(addressInput);
-                window.setTimeout(() => setSuggestionsOpen(false), 120);
-              }}
+              onBlur={handleAddressBlur}
               onEnterFirstSuggestion={() => {
                 if (addressSuggestions[0]) void selectAddressSuggestion(addressSuggestions[0]);
               }}
@@ -1018,6 +1030,10 @@ function ListingEditor(props: {
               className="gap-2 self-end"
               variant="secondary"
               disabled={!addressInput.trim() || propertyBusy}
+              data-setup-lookup-button={props.index}
+              onPointerDown={() => {
+                skipNextAddressBlurCommit.current = true;
+              }}
               onClick={() => void lookupAndApplyProperty()}
             >
               <Search size={16} />
@@ -1136,7 +1152,7 @@ function SetupAddressSuggestionInput({
   suggestionsBusy: boolean;
   onChange: (value: string) => void;
   onFocus: () => void;
-  onBlur: () => void;
+  onBlur: (event: FocusEvent<HTMLInputElement>) => void;
   onEnterFirstSuggestion: () => void;
   onSelect: (suggestion: AddressSuggestion) => void;
 }) {

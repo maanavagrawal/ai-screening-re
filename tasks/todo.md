@@ -2,6 +2,17 @@
 
 ## Priority 1
 
+- [x] Fix setup listing lookup persistence race
+  - Goal: clicking `Lookup facts` after typing an address should not let the address field blur save overwrite the enriched property facts in the setup draft.
+  - Plan:
+    - [x] Skip the address blur commit when the blur is caused by the lookup button interaction.
+    - [x] Keep normal blur saves for users who type an address and move elsewhere without lookup.
+    - [x] Run focused setup coverage, full test wrapper, e2e, build, and diff checks before pushing.
+  - Review:
+    - Setup listing address blur now skips redundant commits when the next target is the lookup button and no-ops when the trimmed address already matches the last synced address, so later focus changes cannot clear property enrichment.
+    - Added a desktop/mobile Playwright regression that uses typed-address lookup and verifies only the lookup-owned saves are emitted after the address-first enrichment path.
+    - Verification: `npm run typecheck` passed; focused setup listing Playwright regression passed on desktop/mobile; `./scripts/test.sh` passed with lint, typecheck, and 108 unit tests; `./scripts/e2e.sh` passed with 16 desktop/mobile Playwright tests; `npm run build` passed; `git diff --check` passed.
+
 - [x] Add setup neighborhood autocomplete and one-area minimum
   - Goal: setup neighborhood entry should suggest cities/neighborhoods while typing, biased by the agent's market, and Continue should unlock after at least one selected area.
   - Plan:

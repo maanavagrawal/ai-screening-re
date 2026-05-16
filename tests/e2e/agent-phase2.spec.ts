@@ -87,6 +87,12 @@ test("setup listing entry starts with address lookup and reveals details", async
       })
     });
   });
+  const listingSaveBodies: Array<{ data?: { listings?: unknown[] } }> = [];
+  await page.route("**/api/setup/save-draft", async (route) => {
+    const body = route.request().postDataJSON() as { data?: { listings?: unknown[] } };
+    if (Array.isArray(body?.data?.listings)) listingSaveBodies.push(body);
+    await route.continue();
+  });
 
   await page.goto("/setup/listings", { waitUntil: "domcontentloaded" });
   await expect(page.getByTestId("setup-ready")).toHaveText("ready");
@@ -108,6 +114,16 @@ test("setup listing entry starts with address lookup and reveals details", async
   await expect(details.getByLabel("Property type")).toHaveValue("house");
   await expect(page.getByText("Optional media link").first()).toBeVisible();
   await expect(page.getByText("Autofill from text").first()).toBeVisible();
+
+  await expect.poll(() => listingSaveBodies.length).toBeGreaterThanOrEqual(2);
+  listingSaveBodies.length = 0;
+  const secondPropertyFacts = page.getByLabel("Listing 2 property facts");
+  await secondPropertyFacts.getByLabel("Address").fill("88 Race Lane");
+  await secondPropertyFacts.getByRole("button", { name: "Lookup facts" }).click();
+  await expect(secondPropertyFacts.getByText("Property facts found.")).toBeVisible();
+  const secondDetails = page.getByLabel("Listing 2 details");
+  await expect(secondDetails.getByLabel("Neighborhood")).toHaveValue("San Ramon");
+  expect(listingSaveBodies).toHaveLength(2);
 });
 
 test("setup neighborhoods autocomplete and continue after one area", async ({ page }, testInfo) => {
