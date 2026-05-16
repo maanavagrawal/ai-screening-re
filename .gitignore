@@ -9,3 +9,6 @@ tsconfig.tsbuildinfo
 .env
 .env*.local
 .gstack/
+.DS_Store
+demo-output/*.mp4
+demo-output/*.webm
