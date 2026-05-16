@@ -14,7 +14,6 @@ import { getEventsForLead } from "@/lib/events";
 import { isSellerLead, sellerDetails } from "@/lib/lead-intent";
 import { getListingsForAgent } from "@/lib/listings";
 import { rankListings } from "@/lib/match-score";
-import { getServiceSupabase } from "@/lib/supabase/service";
 import type { Agent, Lead, Preferences } from "@/lib/types";
 
 export async function findLeadById(leadId: string): Promise<Lead | null> {
@@ -23,12 +22,7 @@ export async function findLeadById(leadId: string): Promise<Lead | null> {
     return rows[0] ?? null;
   }
 
-  const supabase = getServiceSupabase();
-  if (!supabase) return getDevLeadById(leadId);
-
-  const { data, error } = await supabase.from("leads").select("*").eq("id", leadId).maybeSingle();
-  if (error) throw new Error(`Failed to load lead: ${error.message}`);
-  return (data as Lead | null) ?? null;
+  return getDevLeadById(leadId);
 }
 
 export async function findLeadForSession(agentId: string, sessionId: string): Promise<Lead | null> {
@@ -40,20 +34,7 @@ export async function findLeadForSession(agentId: string, sessionId: string): Pr
     return rows[0] ?? null;
   }
 
-  const supabase = getServiceSupabase();
-  if (!supabase) return getDevLeadForSession(agentId, sessionId);
-
-  const { data, error } = await supabase
-    .from("leads")
-    .select("*")
-    .eq("agent_id", agentId)
-    .eq("session_id", sessionId)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (error) throw new Error(`Failed to load session lead: ${error.message}`);
-  return (data as Lead | null) ?? null;
+  return getDevLeadForSession(agentId, sessionId);
 }
 
 export async function getLeadsForAgent(agentId: string): Promise<Lead[]> {
@@ -62,17 +43,7 @@ export async function getLeadsForAgent(agentId: string): Promise<Lead[]> {
     return rows;
   }
 
-  const supabase = getServiceSupabase();
-  if (!supabase) return getDevLeadsForAgent(agentId);
-
-  const { data, error } = await supabase
-    .from("leads")
-    .select("*")
-    .eq("agent_id", agentId)
-    .order("created_at", { ascending: false });
-
-  if (error) throw new Error(`Failed to load leads: ${error.message}`);
-  return (data ?? []) as Lead[];
+  return getDevLeadsForAgent(agentId);
 }
 
 export async function createLead(input: {
@@ -123,56 +94,17 @@ export async function createLead(input: {
     return lead;
   }
 
-  const supabase = getServiceSupabase();
-
-  if (!supabase) {
-    const lead = createDevLead({
-      agentId: input.agent.id,
-      sessionId: input.sessionId,
-      firstName: input.firstName ?? null,
-      phone: input.phone,
-      email: input.email,
-      preferences: input.preferences,
-      freeTextRaw: input.freeTextRaw,
-      preapprovalUrl: input.preapprovalUrl,
-      tier
-    });
-    if (kind === "seller") {
-      await runSellerLeadSideEffects(input.agent, lead);
-    } else {
-      await runLeadSideEffects(input.agent, lead);
-      await recomputeLeadTemperature(lead.id);
-    }
-    return lead;
-  }
-
-  const { data, error } = await supabase
-    .from("leads")
-    .insert({
-      agent_id: input.agent.id,
-      session_id: input.sessionId,
-      first_name: input.firstName ?? null,
-      phone: input.phone,
-      email: input.email,
-      preferences: input.preferences,
-      free_text_raw: input.freeTextRaw ?? null,
-      preapproval_url: input.preapprovalUrl ?? null,
-      tier
-    })
-    .select("*")
-    .single();
-
-  if (error) throw new Error(`Failed to create lead: ${error.message}`);
-
-  const lead = data as Lead;
-
-  await supabase
-    .from("events")
-    .update({ lead_id: lead.id, agent_id: input.agent.id })
-    .eq("session_id", input.sessionId)
-    .eq("agent_id", input.agent.id)
-    .is("lead_id", null);
-
+  const lead = createDevLead({
+    agentId: input.agent.id,
+    sessionId: input.sessionId,
+    firstName: input.firstName ?? null,
+    phone: input.phone,
+    email: input.email,
+    preferences: input.preferences,
+    freeTextRaw: input.freeTextRaw,
+    preapprovalUrl: input.preapprovalUrl,
+    tier
+  });
   if (kind === "seller") {
     await runSellerLeadSideEffects(input.agent, lead);
   } else {
@@ -198,12 +130,7 @@ export async function updateLead(leadId: string, patch: Partial<Lead>): Promise<
     return rows[0] ?? null;
   }
 
-  const supabase = getServiceSupabase();
-  if (!supabase) return updateDevLead(leadId, patch);
-
-  const { data, error } = await supabase.from("leads").update(patch).eq("id", leadId).select("*").single();
-  if (error) throw new Error(`Failed to update lead: ${error.message}`);
-  return data as Lead;
+  return updateDevLead(leadId, patch);
 }
 
 export async function runLeadSideEffects(agent: Agent, lead: Lead) {
@@ -225,7 +152,6 @@ export async function runLeadSideEffects(agent: Agent, lead: Lead) {
     })
   ]);
 
-  const supabase = getServiceSupabase();
   if (hasPostgresEnv()) {
     await query("update leads set brief = $1 where id = $2", [JSON.stringify(brief), lead.id]);
     for (const reason of reasons.reasons) {
@@ -241,27 +167,14 @@ export async function runLeadSideEffects(agent: Agent, lead: Lead) {
     return;
   }
 
-  if (!supabase) {
-    updateDevLead(lead.id, { brief });
-    upsertDevMatchReasons(
-      reasons.reasons.map((reason) => ({
-        lead_id: lead.id,
-        listing_id: reason.listing_id,
-        reason: reason.match_reason,
-        generated_at: new Date().toISOString()
-      }))
-    );
-    return;
-  }
-
-  await supabase.from("leads").update({ brief }).eq("id", lead.id);
-  await supabase.from("lead_match_reasons").upsert(
+  updateDevLead(lead.id, { brief });
+  upsertDevMatchReasons(
     reasons.reasons.map((reason) => ({
       lead_id: lead.id,
       listing_id: reason.listing_id,
-      reason: reason.match_reason
-    })),
-    { onConflict: "lead_id,listing_id" }
+      reason: reason.match_reason,
+      generated_at: new Date().toISOString()
+    }))
   );
 }
 
@@ -281,26 +194,12 @@ export async function runSellerLeadSideEffects(agent: Agent, lead: Lead) {
     return;
   }
 
-  const supabase = getServiceSupabase();
-  if (!supabase) {
-    updateDevLead(lead.id, {
-      brief,
-      temperature: "warm",
-      temperature_score: 2,
-      temperature_reasons: ["Seller inquiry"]
-    });
-    return;
-  }
-
-  await supabase
-    .from("leads")
-    .update({
-      brief,
-      temperature: "warm",
-      temperature_score: 2,
-      temperature_reasons: ["Seller inquiry"]
-    })
-    .eq("id", lead.id);
+  updateDevLead(lead.id, {
+    brief,
+    temperature: "warm",
+    temperature_score: 2,
+    temperature_reasons: ["Seller inquiry"]
+  });
 }
 
 export async function recomputeLeadTemperature(leadId: string): Promise<Lead | null> {
@@ -349,12 +248,5 @@ export async function getMatchReasonMap(leadId: string) {
     return new Map(rows.map((row) => [row.listing_id, row.reason]));
   }
 
-  const supabase = getServiceSupabase();
-  if (!supabase) {
-    return new Map(getDevMatchReasons(leadId).map((row) => [row.listing_id, row.reason]));
-  }
-
-  const { data, error } = await supabase.from("lead_match_reasons").select("*").eq("lead_id", leadId);
-  if (error) throw new Error(`Failed to load match reasons: ${error.message}`);
-  return new Map(((data ?? []) as Array<{ listing_id: string; reason: string }>).map((row) => [row.listing_id, row.reason]));
+  return new Map(getDevMatchReasons(leadId).map((row) => [row.listing_id, row.reason]));
 }

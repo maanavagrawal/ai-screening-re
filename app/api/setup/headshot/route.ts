@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import sharp from "sharp";
 import { getCurrentUserId } from "@/lib/auth/session";
 import { saveSetupDraft } from "@/lib/setup/drafts";
-import { getServiceSupabase } from "@/lib/supabase/service";
 import { isUploadedFile } from "@/lib/uploads";
 
 export const runtime = "nodejs";
@@ -34,19 +33,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Upload a valid image file" }, { status: 400 });
   }
 
-  const supabase = getServiceSupabase();
-  let url = `data:image/jpeg;base64,${output.toString("base64")}`;
-
-  if (supabase) {
-    const path = `${userId}/${Date.now()}.jpg`;
-    const { error } = await supabase.storage.from("headshots").upload(path, output, {
-      contentType: "image/jpeg",
-      upsert: true
-    });
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    const { data } = supabase.storage.from("headshots").getPublicUrl(path);
-    url = data.publicUrl;
-  }
+  const url = `data:image/jpeg;base64,${output.toString("base64")}`;
 
   await saveSetupDraft({ userId, currentStep: "basics", data: { headshotUrl: url } });
   return NextResponse.json({ url });

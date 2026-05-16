@@ -7,7 +7,6 @@ import {
 } from "@/lib/dev-store";
 import { hasPostgresEnv, query } from "@/lib/db/postgres";
 import { enrichmentToRow } from "@/lib/listing-enrichment";
-import { getServiceSupabase } from "@/lib/supabase/service";
 import type { Listing, ListingPayload } from "@/lib/types";
 
 function toInsert(agentId: string, listing: ListingPayload) {
@@ -53,17 +52,7 @@ export async function getListingsForAgent(agentId: string): Promise<Listing[]> {
     return rows;
   }
 
-  const supabase = getServiceSupabase();
-  if (!supabase) return getDevListings(agentId);
-
-  const { data, error } = await supabase
-    .from("listings")
-    .select("*")
-    .eq("agent_id", agentId)
-    .order("created_at", { ascending: false });
-
-  if (error) throw new Error(`Failed to load listings: ${error.message}`);
-  return (data ?? []) as Listing[];
+  return getDevListings(agentId);
 }
 
 export async function getListingForAgent(agentId: string, listingId: string): Promise<Listing | null> {
@@ -75,18 +64,7 @@ export async function getListingForAgent(agentId: string, listingId: string): Pr
     return rows[0] ?? null;
   }
 
-  const supabase = getServiceSupabase();
-  if (!supabase) return getDevListingForAgent(agentId, listingId);
-
-  const { data, error } = await supabase
-    .from("listings")
-    .select("*")
-    .eq("agent_id", agentId)
-    .eq("id", listingId)
-    .maybeSingle();
-
-  if (error) throw new Error(`Failed to load listing: ${error.message}`);
-  return (data as Listing | null) ?? null;
+  return getDevListingForAgent(agentId, listingId);
 }
 
 export async function createListingForAgent(agentId: string, listing: ListingPayload): Promise<Listing> {
@@ -129,12 +107,7 @@ export async function createListingForAgent(agentId: string, listing: ListingPay
     return rows[0];
   }
 
-  const supabase = getServiceSupabase();
-  if (!supabase) return createDevListing(agentId, listing);
-
-  const { data, error } = await supabase.from("listings").insert(toInsert(agentId, listing)).select("*").single();
-  if (error) throw new Error(`Failed to create listing: ${error.message}`);
-  return data as Listing;
+  return createDevListing(agentId, listing);
 }
 
 export async function updateListingForAgent(
@@ -142,7 +115,6 @@ export async function updateListingForAgent(
   listingId: string,
   patch: Partial<ListingPayload>
 ): Promise<Listing | null> {
-  const supabase = getServiceSupabase();
   const rowPatch: Partial<Listing> = {
     ...(patch.address !== undefined ? { address: patch.address } : {}),
     ...(patch.price !== undefined ? { price: patch.price } : {}),
@@ -173,17 +145,7 @@ export async function updateListingForAgent(
     return rows[0] ?? null;
   }
 
-  if (!supabase) return updateDevListing(agentId, listingId, rowPatch);
-
-  const { data, error } = await supabase
-    .from("listings")
-    .update(rowPatch)
-    .eq("agent_id", agentId)
-    .eq("id", listingId)
-    .select("*")
-    .single();
-  if (error) throw new Error(`Failed to update listing: ${error.message}`);
-  return data as Listing;
+  return updateDevListing(agentId, listingId, rowPatch);
 }
 
 export async function deleteListingForAgent(agentId: string, listingId: string): Promise<boolean> {
@@ -192,15 +154,5 @@ export async function deleteListingForAgent(agentId: string, listingId: string):
     return (result?.rowCount ?? 0) > 0;
   }
 
-  const supabase = getServiceSupabase();
-  if (!supabase) return deleteDevListing(agentId, listingId);
-
-  const { data, error } = await supabase
-    .from("listings")
-    .delete()
-    .eq("agent_id", agentId)
-    .eq("id", listingId)
-    .select("id");
-  if (error) throw new Error(`Failed to delete listing: ${error.message}`);
-  return (data ?? []).length > 0;
+  return deleteDevListing(agentId, listingId);
 }

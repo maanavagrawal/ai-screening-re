@@ -2,6 +2,22 @@
 
 ## Priority 1
 
+- [x] Remove legacy hosted-DB compatibility and unused dependencies
+  - Goal: delete code, configuration, and package paths that are no longer used now that production persistence is Railway Postgres with local dev-store fallback.
+  - Plan:
+    - [x] Inventory legacy runtime paths, environment variables, migration leftovers, tests, and docs references.
+    - [x] Remove old data/auth/storage branches and route fallbacks in favor of Railway Postgres plus dev store.
+    - [x] Delete obsolete helper modules and migration leftovers.
+    - [x] Remove unused direct dependencies that no code imports anymore.
+    - [x] Update tests, task notes, README, and environment examples.
+    - [x] Re-run lint, typecheck, unit, audit, e2e, and production build verification.
+  - Review:
+    - Removed the retired hosted-DB SDK, helper modules, environment variables, migration tree, auth branch, storage branch, and data fallback branches.
+    - Simplified non-Postgres behavior to use the existing local dev-store path directly.
+    - Removed two unused direct package dependencies and their transitive packages.
+    - Updated README, environment examples, task history, lessons, and tests so future work points at Railway Postgres plus dev-store only.
+    - Verification: `npm run typecheck`, `./scripts/test.sh` (lint, typecheck, 95 unit tests), `npm audit --omit=dev --audit-level=moderate`, `./scripts/e2e.sh` (12 desktop/mobile Playwright tests), `npm run build`, and `git diff --check` all passed. Audit and e2e needed escalation for npm registry access and local server binding.
+
 - [x] Make ATTOM and Google Places required feature providers
   - Goal: ATTOM property facts and Google Places buyer area autocomplete are core product features, so missing keys must fail loudly instead of silently degrading into fixture/manual-only behavior.
   - Plan:
@@ -74,7 +90,7 @@
     - [x] /plan-eng-review formal gstack review logged; Codex outside voice run and incorporated
   - Scope boundary: implement the current ATTOM, typed location, listing enrichment, buyer media behavior, dashboard summary, activity labels, and anonymous drop-off analytics task only. Do not add marketplace, scraping, browser geolocation, MLS/IDX, seller valuation, or anonymous lead rows.
   - Review:
-    - Implemented a server-only listing enrichment spine: ATTOM-backed property lookup with fixture fallback, normalized listing facts, Railway/Supabase/dev-store persistence, setup onboarding support, and dashboard listing create/update support.
+    - Implemented a server-only listing enrichment spine: ATTOM-backed property lookup with fixture fallback, normalized listing facts, Railway Postgres/dev-store persistence, setup onboarding support, and dashboard listing create/update support.
     - Added typed buyer location intake with structured `selected_areas`, legacy `neighborhoods` compatibility, manual/provider fallbacks, and readable dashboard preference summaries.
     - Hardened buyer-facing privacy with allowlist listing serialization and buyer-safe AI prompt inputs so exact addresses, ATTOM IDs, normalized addresses, and property facts do not leak.
     - Updated listing media behavior so direct MP4 links still autoplay, while Instagram/TikTok links render as official external links only. No permission checkbox was added per user decision.
@@ -207,7 +223,7 @@
     - Add exact agent-link parsing/resolution primitive and API. It should normalize slug/full URL input and return only the matched agent needed for confirmation.
     - Add `/{agentSlug}/seller` plus a small seller-intake component and POST route that creates a seller-tagged lead through an explicit seller side-effect path.
     - Add auth destination resolver and safe `return_to` parsing tests.
-    - Add `return_to` to the `agent_magic_links` Railway schema and Supabase compatibility migration; legacy rows without it fall back through the destination resolver.
+    - Add `return_to` to the `agent_magic_links` Railway schema; legacy rows without it fall back through the destination resolver.
     - Update magic-link creation to initialize drafts without resetting them.
     - Update magic-link verification, `/signup`, setup redirects, and dashboard redirects to use the resolver and safe return target.
     - Update dashboard lead display just enough to make seller leads legible.
@@ -291,7 +307,7 @@
   - Engineering decisions locked:
     - Add `lib/auth/destinations.ts` for `sanitizeReturnTo()` and `resolveAgentAccessDestination()`. Keep all return-target logic in one file.
     - Add an authenticated-agent helper for root/dashboard auth checks that does not fall back to `getFirstDevAgent()`. `getCurrentAgent()` currently has a dev preview fallback; do not use that fallback to decide whether someone is signed in.
-    - Add `return_to text` to `agent_magic_links` in `scripts/railway-migrate.mjs` and Supabase compatibility migration. Store only sanitized relative paths.
+    - Add `return_to text` to `agent_magic_links` in `scripts/railway-migrate.mjs`. Store only sanitized relative paths.
     - Add `parseAgentLinkInput()` in a shared helper. It must reject reserved paths such as `api`, `auth`, `dashboard`, `setup`, `signup`, and `agents`.
     - Add a discriminated lead intent path: buyer leads keep existing brief/match side effects; seller leads skip buyer AI and match-reason generation.
     - Keep seller v1 in `leads` with `preferences.intent = "seller"` and both contact fields required. Do not add a parallel seller table in this task.
@@ -554,7 +570,7 @@
   - Goal: build the multi-tenant buyer experience only: landing, adaptive intake, contact gate, matches, showing request, events, seed data, docs, and verification.
   - Acceptance:
     - Next.js 15 App Router app runs with `pnpm dev`.
-    - Supabase migrations define all Phase 1 tables, indexes, storage, and RLS policies.
+    - Database migrations define all Phase 1 tables, indexes, and storage metadata.
     - Railway migration script defines the production Postgres schema for the Railway-first deployment path.
     - `resolveAgent(request)`, `onboardAgent(payload)`, and `matchScore()` exist with tests.
     - Seed script calls `onboardAgent()` for `maya` and `david`.
@@ -590,7 +606,7 @@
 
 - [x] 0. Confirm pre-build plan artifacts with user before implementation.
 - [x] 1. Scaffold Next.js 15, Tailwind, shadcn-style primitives, fonts, package scripts, and env examples.
-- [x] 2. Add Supabase schema, indexes, storage bucket migration, RLS policies, and typed DB helpers.
+- [x] 2. Add persistence schema, indexes, storage metadata, and typed DB helpers.
 - [x] 3. Build `resolveAgent(request)` and `onboardAgent(payload)` multi-tenant primitives.
 - [x] 4. Build `matchScore()` and unit tests.
 - [x] 5. Add seed script for Maya and David through `onboardAgent()`.
@@ -617,7 +633,7 @@
 - 2026-05-13: Browser QA covered `/maya`, `/david`, intake-to-gate, matches, deferred verification, desktop/mobile e2e, and visual screenshots for landing/matches. Fixed stale e2e server reuse, intake double-submit races, Twilio/AI deterministic test fallbacks, LAN session ID fallback, and blank listing media placeholders.
 - 2026-05-13: Started Phase 2 planning gate per user request. User then approved moving into implementation after the plan; do not commit or push until tests pass and browser QA is clean.
 - 2026-05-13: Completed Phase 2 implementation: setup wizard, auth/session draft flow, voice/listing setup APIs, dashboard leads/listings/distribution/settings, temperature computation, notifications, docs, host-aware share links, and RLS migration updates. Verified `npm run typecheck`, `npm run lint`, `npm run test`, `npm run e2e`, `npm run build`, plus live in-app browser QA on `/dashboard/leads` and `/dashboard/distribution`. No commit or push was made.
-- 2026-05-13: Switched deployment preference to Railway-first after Supabase setup friction. Added Railway web-service config, Railway Postgres migration script, health check, direct Postgres persistence paths, and Resend-backed magic-link auth for production.
+- 2026-05-13: Switched deployment preference to Railway-first after deployment setup friction. Added Railway web-service config, Railway Postgres migration script, health check, direct Postgres persistence paths, and Resend-backed magic-link auth for production.
 - 2026-05-13: Fixed production root routing so `/` starts agent setup instead of redirecting to `/maya`; `/{agentSlug}` remains the buyer-facing share URL. Verified typecheck, lint, targeted desktop/mobile Playwright routing coverage, and production build.
 - 2026-05-13: Fixed Railway setup regressions: headshot upload no longer depends on the server `File` constructor, and production signup now requires a real email/auth path instead of silently falling back to dev setup. Verified typecheck, lint, all unit tests, production build, and built bundle grep for `File`.
 - 2026-05-13: Removed the blank remote-video frame from `/setup/welcome`; setup now goes from the value prop directly to checklist and CTA. Verified typecheck, lint, targeted setup e2e on desktop/mobile, and production build.

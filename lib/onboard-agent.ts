@@ -1,8 +1,6 @@
 import { z } from "zod";
 import { transaction } from "@/lib/db/postgres";
 import { ListingEnrichmentSchema } from "@/lib/listing-enrichment";
-import { getServiceSupabase } from "@/lib/supabase/service";
-import type { Json } from "@/lib/supabase/types";
 import type { Agent, ListingPayload, NotificationPreferences } from "@/lib/types";
 import { upsertDevAgent } from "@/lib/dev-store";
 
@@ -152,24 +150,5 @@ export async function onboardAgent(payload: AgentSetupPayload): Promise<Agent> {
   });
   if (postgresAgent) return postgresAgent;
 
-  const supabase = getServiceSupabase();
-
-  if (!supabase) {
-    return upsertDevAgent(parsed);
-  }
-
-  const { data, error } = await supabase.rpc("onboard_agent", {
-    payload: parsed as unknown as Json
-  });
-
-  if (error) {
-    throw new Error(`Failed to onboard agent ${parsed.slug}: ${error.message}`);
-  }
-
-  const agent = Array.isArray(data) ? data[0] : data;
-  if (!agent) {
-    throw new Error(`onboard_agent returned no agent for ${parsed.slug}`);
-  }
-
-  return agent as Agent;
+  return upsertDevAgent(parsed);
 }

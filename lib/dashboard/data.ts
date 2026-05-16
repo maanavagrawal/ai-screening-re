@@ -2,7 +2,6 @@ import { getEventsForLead, logEvents } from "@/lib/events";
 import { getListingsForAgent } from "@/lib/listings";
 import { getLeadsForAgent, updateLead } from "@/lib/leads";
 import { hasPostgresEnv, query as pgQuery } from "@/lib/db/postgres";
-import { getServiceSupabase } from "@/lib/supabase/service";
 import type { Agent, DashboardLead, Lead, ShowingRequest } from "@/lib/types";
 
 export type LeadFilter = "all" | "hot" | "warm" | "browsing" | "showings";
@@ -109,20 +108,8 @@ export async function getShowingRequestsForLead(leadId: string): Promise<Showing
     return rows;
   }
 
-  const supabase = getServiceSupabase();
-  if (!supabase) {
-    const { devStore } = await import("@/lib/dev-store");
-    return devStore().showingRequests.filter((request) => request.lead_id === leadId);
-  }
-
-  const { data, error } = await supabase
-    .from("showing_requests")
-    .select("*")
-    .eq("lead_id", leadId)
-    .order("created_at", { ascending: false });
-
-  if (error) throw new Error(`Failed to load showing requests: ${error.message}`);
-  return (data ?? []) as ShowingRequest[];
+  const { devStore } = await import("@/lib/dev-store");
+  return devStore().showingRequests.filter((request) => request.lead_id === leadId);
 }
 
 export async function markLeadContacted(agent: Agent, lead: Lead) {

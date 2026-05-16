@@ -3,16 +3,11 @@ import { onboardAgent } from "@/lib/onboard-agent";
 import type { Agent } from "@/lib/types";
 
 const mocks = vi.hoisted(() => ({
-  transaction: vi.fn(),
-  getServiceSupabase: vi.fn()
+  transaction: vi.fn()
 }));
 
 vi.mock("@/lib/db/postgres", () => ({
   transaction: mocks.transaction
-}));
-
-vi.mock("@/lib/supabase/service", () => ({
-  getServiceSupabase: mocks.getServiceSupabase
 }));
 
 const insertedAgent: Agent = {
@@ -34,7 +29,6 @@ const insertedAgent: Agent = {
 describe("onboardAgent", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.getServiceSupabase.mockReturnValue(null);
   });
 
   it("normalizes blank optional listing media from setup drafts", async () => {

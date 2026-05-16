@@ -7,7 +7,6 @@ const mocks = vi.hoisted(() => ({
   setAgentSession: vi.fn(),
   getMagicLinkMode: vi.fn(),
   hasPostgresEnv: vi.fn(),
-  hasSupabaseEnv: vi.fn(),
   getPublicOriginFromRequest: vi.fn(),
   ensureSetupDraftInitialized: vi.fn(),
   resolveAgentAccessDestination: vi.fn()
@@ -35,10 +34,6 @@ vi.mock("@/lib/setup/drafts", () => ({
   ensureSetupDraftInitialized: mocks.ensureSetupDraftInitialized
 }));
 
-vi.mock("@/lib/supabase/service", () => ({
-  hasSupabaseEnv: mocks.hasSupabaseEnv
-}));
-
 vi.mock("@/lib/auth/destinations", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/auth/destinations")>();
   return {
@@ -51,7 +46,6 @@ describe("/api/auth/magic-link", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.hasPostgresEnv.mockReturnValue(true);
-    mocks.hasSupabaseEnv.mockReturnValue(false);
     mocks.getPublicOriginFromRequest.mockReturnValue("https://app.example.com");
     mocks.createAgentMagicLink.mockResolvedValue({ userId: "user_1", token: "token_123" });
     mocks.devUserIdFromEmail.mockReturnValue("user_1");

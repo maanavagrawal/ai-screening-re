@@ -2,7 +2,6 @@ import { z } from "zod";
 import { EVENT_TYPES } from "@/lib/constants";
 import { addDevEvents, getDevEventsForAgent as getDevEventsForAgentRows, getDevEventsForLead } from "@/lib/dev-store";
 import { hasPostgresEnv, query } from "@/lib/db/postgres";
-import { getServiceSupabase } from "@/lib/supabase/service";
 import type { Agent, EventRecord, Lead } from "@/lib/types";
 
 export const EventInputSchema = z.object({
@@ -45,12 +44,7 @@ export async function logEvents(input: {
     return values;
   }
 
-  const supabase = getServiceSupabase();
-  if (!supabase) return addDevEvents(rows);
-
-  const { data, error } = await supabase.from("events").insert(rows).select("*");
-  if (error) throw new Error(`Failed to log events: ${error.message}`);
-  return data as EventRecord[];
+  return addDevEvents(rows);
 }
 
 export function sanitizeEventMetadata(eventType: string, metadata: Record<string, unknown>) {
@@ -89,17 +83,7 @@ export async function getEventsForAgent(agentId: string): Promise<EventRecord[]>
     return rows;
   }
 
-  const supabase = getServiceSupabase();
-  if (!supabase) return getDevEventsForAgentRows(agentId);
-
-  const { data, error } = await supabase
-    .from("events")
-    .select("*")
-    .eq("agent_id", agentId)
-    .order("created_at", { ascending: true });
-
-  if (error) throw new Error(`Failed to load agent events: ${error.message}`);
-  return (data ?? []) as EventRecord[];
+  return getDevEventsForAgentRows(agentId);
 }
 
 export async function getEventsForLead(lead: Lead): Promise<EventRecord[]> {
@@ -114,33 +98,7 @@ export async function getEventsForLead(lead: Lead): Promise<EventRecord[]> {
     return rows.sort((a, b) => a.created_at.localeCompare(b.created_at));
   }
 
-  const supabase = getServiceSupabase();
-  if (!supabase) return getDevEventsForLead(lead);
-
-  const [leadEvents, sessionEvents] = await Promise.all([
-    supabase
-      .from("events")
-      .select("*")
-      .eq("agent_id", lead.agent_id)
-      .eq("lead_id", lead.id)
-      .order("created_at", { ascending: true }),
-    supabase
-      .from("events")
-      .select("*")
-      .eq("agent_id", lead.agent_id)
-      .eq("session_id", lead.session_id)
-      .order("created_at", { ascending: true })
-  ]);
-
-  if (leadEvents.error) throw new Error(`Failed to load lead events: ${leadEvents.error.message}`);
-  if (sessionEvents.error) throw new Error(`Failed to load session events: ${sessionEvents.error.message}`);
-
-  const byId = new Map<string, EventRecord>();
-  for (const event of ([...(sessionEvents.data ?? []), ...(leadEvents.data ?? [])] as EventRecord[])) {
-    byId.set(event.id, event);
-  }
-
-  return Array.from(byId.values()).sort((a, b) => a.created_at.localeCompare(b.created_at));
+  return getDevEventsForLead(lead);
 }
 
 function answerKind(answer: unknown) {

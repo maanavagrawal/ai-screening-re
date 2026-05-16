@@ -8,7 +8,6 @@ AI-native, multi-tenant real estate lead-gen platform for agent setup and buyer 
 - Tailwind CSS with restyled shadcn-style primitives
 - Railway-hosted Next.js app/API routes
 - Railway Postgres for production persistence
-- Optional legacy Supabase support for older deployments
 - Vercel AI SDK with Anthropic
 - Twilio Verify
 - Playwright + Vitest
@@ -31,7 +30,6 @@ AI-native, multi-tenant real estate lead-gen platform for agent setup and buyer 
 
    - For Railway-style local persistence, set `DATABASE_URL` and run `npm run db:migrate`.
    - If `DATABASE_URL` is blank, local development uses deterministic in-memory seed data.
-   - Supabase env vars are now optional legacy compatibility only.
 
 4. Configure Anthropic:
 
@@ -116,9 +114,6 @@ This app is now Railway-first: one Railway web service runs the Next.js frontend
    DISABLE_AI=
    DISABLE_TWILIO=
    ALLOW_DEV_AGENT_AUTH=
-   NEXT_PUBLIC_SUPABASE_URL=
-   NEXT_PUBLIC_SUPABASE_ANON_KEY=
-   SUPABASE_SERVICE_ROLE_KEY=
    ```
 
 7. Seed pilots, if desired, from a shell with production env vars:
@@ -135,7 +130,7 @@ GET /api/health
 
 ## Decisions I Made
 
-- Deployment target is Railway for the Next.js app/API routes and Railway Postgres for persistence. Supabase remains optional legacy compatibility, not the default production path.
+- Deployment target is Railway for the Next.js app/API routes and Railway Postgres for persistence.
 - Local development has deterministic fallbacks when Railway Postgres, Anthropic, or Twilio secrets are missing. Production still uses server-side service integrations.
 - Phase 1 uses path-based tenant routing only, but all tenant lookup goes through `resolveAgent(request)` for later subdomain/custom-domain support.
 - The AI-generated lead brief and match reasons are idempotent side effects of lead creation. A later queue/outbox can replace this without changing product APIs.

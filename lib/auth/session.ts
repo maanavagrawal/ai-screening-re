@@ -5,7 +5,6 @@ import {
   getFirstDevAgent
 } from "@/lib/dev-store";
 import { hasPostgresEnv, query } from "@/lib/db/postgres";
-import { getServiceSupabase, hasSupabaseEnv } from "@/lib/supabase/service";
 import type { Agent } from "@/lib/types";
 
 export const AGENT_USER_COOKIE = "agent_user_id";
@@ -77,35 +76,19 @@ export async function getCurrentUserId() {
     return rows[0]?.user_id ?? null;
   }
 
-  if (
-    hasSupabaseEnv() &&
-    process.env.NODE_ENV === "production" &&
-    process.env.ALLOW_DEV_AGENT_AUTH !== "1"
-  ) {
-    return null;
-  }
   return (await cookies()).get(AGENT_USER_COOKIE)?.value ?? null;
 }
 
 export async function getCurrentAgent(): Promise<Agent | null> {
   const userId = await getCurrentUserId();
   if (userId) return getAgentByUserId(userId);
-  if (!hasSupabaseEnv()) return getFirstDevAgent();
-  return null;
+  return getFirstDevAgent();
 }
 
 export async function getAgentByUserId(userId: string): Promise<Agent | null> {
   if (hasPostgresEnv()) {
     const { rows } = (await query<Agent>("select * from agents where user_id = $1 limit 1", [userId])) ?? { rows: [] };
     return rows[0] ?? null;
-  }
-
-  const supabase = getServiceSupabase();
-
-  if (supabase) {
-    const { data, error } = await supabase.from("agents").select("*").eq("user_id", userId).maybeSingle();
-    if (error) throw new Error(`Failed to load current agent: ${error.message}`);
-    return (data as Agent | null) ?? null;
   }
 
   return getDevAgentByUserId(userId);

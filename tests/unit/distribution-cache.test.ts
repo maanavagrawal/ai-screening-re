@@ -6,8 +6,7 @@ const mocks = vi.hoisted(() => ({
   generateReplyTemplates: vi.fn(),
   getListingsForAgent: vi.fn(),
   hasPostgresEnv: vi.fn(),
-  query: vi.fn(),
-  getServiceSupabase: vi.fn()
+  query: vi.fn()
 }));
 
 vi.mock("@/lib/ai/anthropic", () => ({
@@ -21,10 +20,6 @@ vi.mock("@/lib/listings", () => ({
 vi.mock("@/lib/db/postgres", () => ({
   hasPostgresEnv: mocks.hasPostgresEnv,
   query: mocks.query
-}));
-
-vi.mock("@/lib/supabase/service", () => ({
-  getServiceSupabase: mocks.getServiceSupabase
 }));
 
 const agent: Agent = {
@@ -49,7 +44,6 @@ describe("distribution template cache", () => {
     mocks.generateReplyTemplates.mockResolvedValue({ templates: [] });
     mocks.getListingsForAgent.mockResolvedValue([]);
     mocks.hasPostgresEnv.mockReturnValue(true);
-    mocks.getServiceSupabase.mockReturnValue(null);
   });
 
   it("returns generated distribution data without caching when the agent row no longer exists", async () => {

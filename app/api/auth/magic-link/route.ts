@@ -1,4 +1,3 @@
-import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { parseJsonBody } from "@/lib/api/validation";
@@ -8,7 +7,6 @@ import { createAgentMagicLink, devUserIdFromEmail, setAgentSession } from "@/lib
 import { hasPostgresEnv } from "@/lib/db/postgres";
 import { getPublicOriginFromRequest } from "@/lib/public-origin";
 import { ensureSetupDraftInitialized } from "@/lib/setup/drafts";
-import { hasSupabaseEnv } from "@/lib/supabase/service";
 
 const BodySchema = z.object({
   email: z.string().email(),
@@ -22,12 +20,8 @@ export async function POST(request: Request) {
   const email = parsed.data.email.toLowerCase();
   const returnTo = sanitizeReturnTo(parsed.data.return_to);
   const origin = getPublicOriginFromRequest(request);
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   const mode = getMagicLinkMode({
     hasPostgres: hasPostgresEnv(),
-    hasSupabase: hasSupabaseEnv(),
-    hasSupabaseAnonKey: Boolean(supabaseAnonKey),
     hasResend: Boolean(process.env.RESEND_API_KEY),
     isProduction: process.env.NODE_ENV === "production",
     allowDevAgentAuth: process.env.ALLOW_DEV_AGENT_AUTH === "1"
@@ -80,19 +74,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: message }, { status: 500 });
     }
 
-    return NextResponse.json({ ok: true });
-  }
-
-  if (mode === "supabase_email") {
-    if (!supabaseUrl || !supabaseAnonKey) {
-      return NextResponse.json({ error: "Supabase Auth is not configured" }, { status: 500 });
-    }
-    const supabase = createClient(supabaseUrl, supabaseAnonKey);
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: { emailRedirectTo: `${origin}${returnTo ?? "/setup/welcome"}` }
-    });
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 });
     return NextResponse.json({ ok: true });
   }
 

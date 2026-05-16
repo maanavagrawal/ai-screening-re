@@ -3,7 +3,6 @@ import { getDevDistributionCache, setDevDistributionCache } from "@/lib/dev-stor
 import { hasPostgresEnv, query } from "@/lib/db/postgres";
 import { agentBaseUrl } from "@/lib/dashboard/client-utils";
 import { getListingsForAgent } from "@/lib/listings";
-import { getServiceSupabase } from "@/lib/supabase/service";
 import type { Agent, Lead } from "@/lib/types";
 
 export type DistributionTemplate = {
@@ -40,23 +39,10 @@ export async function getDistributionData(agent: Agent, leads: Lead[], origin?: 
     return regenerateDistributionData(agent, leads, origin);
   }
 
-  const supabase = getServiceSupabase();
-  if (!supabase) {
-    const cached = getDevDistributionCache(agent.id);
-    if (cached) {
-      const data = cached.data as DistributionData;
-      if (JSON.stringify(data).includes(url)) return { ...data, attribution: sourceBreakdown(leads) };
-    }
-  } else {
-    const { data } = await supabase
-      .from("agent_distribution_templates")
-      .select("data, updated_at")
-      .eq("agent_id", agent.id)
-      .maybeSingle();
-    if (data?.data) {
-      const cached = data.data as DistributionData;
-      if (JSON.stringify(cached).includes(url)) return { ...cached, attribution: sourceBreakdown(leads) };
-    }
+  const cached = getDevDistributionCache(agent.id);
+  if (cached) {
+    const data = cached.data as DistributionData;
+    if (JSON.stringify(data).includes(url)) return { ...data, attribution: sourceBreakdown(leads) };
   }
 
   return regenerateDistributionData(agent, leads, origin);
@@ -73,25 +59,12 @@ export async function regenerateDistributionData(agent: Agent, leads: Lead[], or
     updatedAt: new Date().toISOString()
   };
 
-  const supabase = getServiceSupabase();
   if (hasPostgresEnv()) {
     await cacheDistributionDataInPostgres(agent.id, data);
     return data;
   }
 
-  if (!supabase) {
-    setDevDistributionCache(agent.id, data as unknown as Record<string, unknown>);
-    return data;
-  }
-
-  await supabase.from("agent_distribution_templates").upsert(
-    {
-      agent_id: agent.id,
-      data,
-      updated_at: data.updatedAt
-    },
-    { onConflict: "agent_id" }
-  );
+  setDevDistributionCache(agent.id, data as unknown as Record<string, unknown>);
   return data;
 }
 

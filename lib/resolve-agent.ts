@@ -1,6 +1,5 @@
 import { getDevAgentBySlug } from "@/lib/dev-store";
 import { hasPostgresEnv, query } from "@/lib/db/postgres";
-import { getServiceSupabase } from "@/lib/supabase/service";
 import type { Agent } from "@/lib/types";
 
 function normalizeSlug(value: string | null | undefined) {
@@ -35,10 +34,5 @@ export async function resolveAgentBySlug(slug: string | null | undefined): Promi
     return rows[0] ?? null;
   }
 
-  const supabase = getServiceSupabase();
-  if (!supabase) return getDevAgentBySlug(normalizedSlug);
-
-  const { data, error } = await supabase.from("agents").select("*").eq("slug", normalizedSlug).maybeSingle();
-  if (error) throw new Error(`Failed to resolve agent ${normalizedSlug}: ${error.message}`);
-  return (data as Agent | null) ?? null;
+  return getDevAgentBySlug(normalizedSlug);
 }

@@ -97,7 +97,7 @@ Not in scope:
 
 10. Highest-risk tests are mandatory first.
    - Buyer-safe redaction for all new enrichment fields.
-   - Dual persistence across Railway Postgres, Supabase fallback, setup drafts, and dev store.
+   - Dual persistence across Railway Postgres, setup drafts, and dev store.
    - Provider fixture/failure fallback.
    - Converted-session analytics where `lead_id` is backfilled.
    - Typed area compatibility with existing match scoring and dashboard summaries.
@@ -279,7 +279,7 @@ Lake Score             | 8/8 recommendations chose the complete option
 
 ### What Already Exists
 
-- `lib/listings.ts` already centralizes listing CRUD across Railway Postgres, Supabase, and dev store. Reuse it by extending one insert/update mapper rather than adding provider-specific persistence in UI routes.
+- `lib/listings.ts` already centralizes listing CRUD across Railway Postgres and dev store. Reuse it by extending one insert/update mapper rather than adding provider-specific persistence in UI routes.
 - `components/setup/setup-wizard.tsx` already supports three listing drafts, manual fields, text-based detail extraction, media URL entry, and neighborhood carry-forward. Add address lookup before those controls instead of replacing the working fallback.
 - `app/api/dashboard/listings/route.ts` and `components/dashboard/dashboard-shell.tsx` already provide listing add/edit and dashboard display. The plan should add enrichment to those paths without a dashboard rewrite.
 - `Preferences.neighborhoods` and `rankListings()` already drive matching. `selected_areas` must mirror labels back into `neighborhoods` until matching is explicitly upgraded.
@@ -441,7 +441,7 @@ Coverage target after implementation: all listed paths covered by unit, E2E, or 
 Priority test order from engineering review:
 
 1. Buyer-safe redaction for new enrichment fields in buyer APIs, buyer prompts, match cards, and event labels.
-2. Listing enrichment propagation through Railway Postgres, Supabase fallback, setup drafts, onboarding insert, and dev store.
+2. Listing enrichment propagation through Railway Postgres, setup drafts, onboarding insert, and dev store.
 3. Provider fixture mode and fallback UX for missing keys, no match, auth failure, rate limit, timeout, and malformed payload.
 4. Anonymous analytics across converted sessions where `createLead()` backfills `lead_id`.
 5. Typed selected-area compatibility with legacy `neighborhoods`, match scoring, and dashboard summaries.
@@ -475,7 +475,7 @@ Critical gaps before implementation: all rows need tests.
 2. Migrate listing and preference data shape.
    - Add listing enrichment fields: `attom_id`, `property_data_source`, `property_enriched_at`, `property_match_confidence`, `normalized_address`, `property_facts`, and `property_override_fields`.
    - Store coordinates only if the buyer-safe serializers and prompts omit them by allowlist.
-   - Extend `Listing`, `ListingPayload`, setup draft data, dev store, Supabase/Railway migrations, and onboarding insert paths.
+   - Extend `Listing`, `ListingPayload`, setup draft data, dev store, Railway migrations, and onboarding insert paths.
    - Add `preferences.selected_areas` while preserving `preferences.neighborhoods`.
 
 3. Build provider clients and normalization.
@@ -567,7 +567,7 @@ Browser QA:
 Step                         | Modules touched                         | Depends on
 -----------------------------|-----------------------------------------|-----------------------------
 Provider clients/normalizers  | lib/property, lib/location, tests/unit  | env/config
-Data model/migrations         | supabase, scripts, lib/types, dev-store | none
+Data model/migrations         | scripts, lib/types, dev-store           | none
 Setup/dashboard listing UI    | components/setup, dashboard, api        | provider + data model
 Buyer intake location UI      | components/intake, api/intake           | location normalizer
 Dashboard summaries/analytics | lib/dashboard, components/dashboard     | events + data model
@@ -610,7 +610,7 @@ Conflict flags:
 
 ## Implementation Review
 
-- Listing enrichment: added server-only ATTOM lookup with fixture fallback, normalized fact storage, Railway/Supabase/dev-store persistence, setup onboarding support, dashboard listing add/update support, and explicit environment docs for `ATTOM_API_KEY`.
+- Listing enrichment: added server-only ATTOM lookup with fixture fallback, normalized fact storage, Railway Postgres/dev-store persistence, setup onboarding support, dashboard listing add/update support, and explicit environment docs for `ATTOM_API_KEY`.
 - Location intake: added server-only Google Places Autocomplete integration with local/manual fallback, structured `selected_areas`, legacy `neighborhoods` mirroring, and dashboard preference summaries that read like lead context instead of raw JSON.
 - Buyer privacy: converted listing redaction to an allowlist and updated buyer AI prompts so exact addresses, ATTOM IDs, normalized addresses, coordinates, and property facts stay agent-only.
 - Media behavior: kept direct MP4 autoplay for agent-provided links and changed Instagram/TikTok to official external-link cards only. The permission checkbox was intentionally omitted per user decision.

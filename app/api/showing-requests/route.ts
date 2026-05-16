@@ -8,7 +8,6 @@ import { hasLeadSession } from "@/lib/lead-session-auth";
 import { findLeadById, recomputeLeadTemperature, updateLead } from "@/lib/leads";
 import { getListingForAgent } from "@/lib/listings";
 import { resolveAgentBySlug } from "@/lib/resolve-agent";
-import { getServiceSupabase } from "@/lib/supabase/service";
 
 const BodySchema = z.object({
   agent_slug: z.string().min(1),
@@ -34,7 +33,6 @@ export async function POST(request: Request) {
   if (!listing) return NextResponse.json({ error: "Listing not found" }, { status: 404 });
   if (!lead.phone_verified) return NextResponse.json({ error: "Phone must be verified first" }, { status: 400 });
 
-  const supabase = getServiceSupabase();
   const requestRow = hasPostgresEnv()
     ? await (async () => {
         const { rows } = (await query(
@@ -44,22 +42,6 @@ export async function POST(request: Request) {
           [lead.id, body.listing_id, body.preferred_date ?? null, body.preferred_time_of_day ?? null, body.note ?? null]
         )) ?? { rows: [] };
         return rows[0];
-      })()
-    : supabase
-      ? await (async () => {
-        const { data, error } = await supabase
-          .from("showing_requests")
-          .insert({
-            lead_id: lead.id,
-            listing_id: body.listing_id,
-            preferred_date: body.preferred_date ?? null,
-            preferred_time_of_day: body.preferred_time_of_day ?? null,
-            note: body.note ?? null
-          })
-          .select("*")
-          .single();
-        if (error) throw new Error(`Failed to create showing request: ${error.message}`);
-        return data;
       })()
     : addDevShowingRequest({
         lead_id: lead.id,

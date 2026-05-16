@@ -3,8 +3,6 @@ import { getMagicLinkMode } from "@/lib/auth/magic-link-mode";
 
 const base = {
   hasPostgres: false,
-  hasSupabase: false,
-  hasSupabaseAnonKey: false,
   hasResend: false,
   isProduction: true,
   allowDevAgentAuth: false
@@ -25,9 +23,5 @@ describe("getMagicLinkMode", () => {
 
   it("keeps local setup convenient when production safeguards are not active", () => {
     expect(getMagicLinkMode({ ...base, isProduction: false })).toBe("dev_session");
-  });
-
-  it("does not send an immediate setup redirect for Supabase magic-link auth", () => {
-    expect(getMagicLinkMode({ ...base, hasSupabase: true, hasSupabaseAnonKey: true })).toBe("supabase_email");
   });
 });
