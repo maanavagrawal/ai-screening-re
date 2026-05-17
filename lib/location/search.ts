@@ -20,6 +20,7 @@ type GoogleSuggestion = {
 export async function searchLocationSuggestions(input: {
   query: string;
   providerQuery?: string;
+  includedPrimaryTypes?: string[];
   agent: Pick<Agent, "market" | "neighborhoods">;
   listings?: Array<Pick<Listing, "neighborhood">>;
 }): Promise<LocationSuggestion[]> {
@@ -27,7 +28,7 @@ export async function searchLocationSuggestions(input: {
   const providerQuery = input.providerQuery?.trim() || query;
   const apiKey = requiredProviderEnv("GOOGLE_PLACES_API_KEY", "buyer area autocomplete");
   if (providerQuery.length >= 2) {
-    const google = await googleLocationSuggestions(providerQuery, apiKey);
+    const google = await googleLocationSuggestions(providerQuery, apiKey, input.includedPrimaryTypes);
     if (google.length) return google;
   }
 
@@ -75,7 +76,7 @@ export function fixtureLocationSuggestions(input: {
   return suggestions;
 }
 
-async function googleLocationSuggestions(query: string, apiKey: string): Promise<LocationSuggestion[]> {
+async function googleLocationSuggestions(query: string, apiKey: string, includedPrimaryTypes?: string[]): Promise<LocationSuggestion[]> {
   const response = await fetch("https://places.googleapis.com/v1/places:autocomplete", {
     method: "POST",
     headers: {
@@ -88,7 +89,7 @@ async function googleLocationSuggestions(query: string, apiKey: string): Promise
       input: query,
       languageCode: "en",
       regionCode: "us",
-      includedPrimaryTypes: ["locality", "neighborhood", "postal_code", "administrative_area_level_2", "school"]
+      includedPrimaryTypes: includedPrimaryTypes ?? ["locality", "neighborhood", "postal_code", "administrative_area_level_2", "school"]
     }),
     cache: "no-store"
   });

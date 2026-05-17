@@ -54,6 +54,7 @@ describe("/api/setup/location-suggestions", () => {
     expect(mocks.searchLocationSuggestions).toHaveBeenCalledWith({
       query: "San",
       providerQuery: "San, San Francisco, CA",
+      includedPrimaryTypes: undefined,
       agent: {
         market: "San Francisco, CA",
         neighborhoods: ["Oakland"]
@@ -70,6 +71,25 @@ describe("/api/setup/location-suggestions", () => {
           parentLabel: "California, USA"
         }
       ]
+    });
+  });
+
+  it("scopes setup market suggestions to cities", async () => {
+    const response = assertResponse(await POST(request({
+      query: "San",
+      scope: "market"
+    })));
+
+    expect(response.status).toBe(200);
+    expect(mocks.searchLocationSuggestions).toHaveBeenCalledWith({
+      query: "San",
+      providerQuery: "San",
+      includedPrimaryTypes: ["locality"],
+      agent: {
+        market: "",
+        neighborhoods: []
+      },
+      listings: []
     });
   });
 

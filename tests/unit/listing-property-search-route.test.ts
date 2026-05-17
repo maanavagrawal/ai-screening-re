@@ -44,7 +44,7 @@ describe("listing property search route", () => {
     const response = assertResponse(await POST(jsonRequest({ address: "123 Maple Street, Austin, TX" })));
 
     expect(response.status).toBe(200);
-    expect(mocks.lookupPropertyByAddress).toHaveBeenCalledWith("123 Maple Street, Austin, TX");
+    expect(mocks.lookupPropertyByAddress).toHaveBeenCalledWith("123 Maple Street, Austin, TX", { placeId: undefined });
     await expect(response.json()).resolves.toEqual({
       result: {
         propertyDataSource: "fixture",
@@ -62,5 +62,16 @@ describe("listing property search route", () => {
 
     expect(response.status).toBe(401);
     expect(mocks.lookupPropertyByAddress).not.toHaveBeenCalled();
+  });
+
+  it("passes selected Google place IDs into property lookup", async () => {
+    const response = assertResponse(
+      await POST(jsonRequest({ address: "1233 Laguna Street, San Francisco, CA", placeId: "place-laguna" }))
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.lookupPropertyByAddress).toHaveBeenCalledWith("1233 Laguna Street, San Francisco, CA", {
+      placeId: "place-laguna"
+    });
   });
 });

@@ -6,7 +6,8 @@ import { lookupPropertyByAddress } from "@/lib/property/lookup";
 import { providerErrorMessage, providerErrorStatus } from "@/lib/provider-config";
 
 const PropertySearchSchema = z.object({
-  address: z.string().min(3)
+  address: z.string().min(3),
+  placeId: z.string().trim().min(1).max(256).optional().nullable()
 });
 
 export async function POST(request: Request) {
@@ -17,7 +18,7 @@ export async function POST(request: Request) {
   if ("response" in parsed) return parsed.response;
 
   try {
-    const result = await lookupPropertyByAddress(parsed.data.address);
+    const result = await lookupPropertyByAddress(parsed.data.address, { placeId: parsed.data.placeId });
     return NextResponse.json({ result });
   } catch (error) {
     return NextResponse.json(

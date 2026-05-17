@@ -1,5 +1,5 @@
 import type { ListingPayload, NormalizedAddress, PropertyFacts } from "@/lib/types";
-import { ProviderRequestError, requiredProviderEnv } from "@/lib/provider-config";
+import { MissingProviderConfigError, ProviderRequestError, requiredProviderEnv } from "@/lib/provider-config";
 
 export type PropertyLookupResult = Pick<
   ListingPayload,
@@ -31,9 +31,83 @@ type GoogleAddressSuggestion = {
     };
   };
 };
+type GooglePlaceDetails = {
+  formattedAddress?: string;
+  addressComponents?: GoogleAddressComponent[];
+};
+type GoogleAddressComponent = {
+  longText?: string;
+  shortText?: string;
+  long_name?: string;
+  short_name?: string;
+  types?: string[];
+};
+type ResolvedGoogleAddress = {
+  attomAddress: string;
+  label: string;
+};
 
 const ATTOM_BASE_URL = "https://api.gateway.attomdata.com/propertyapi/v1.0.0/property/basicprofile";
 const GOOGLE_PLACES_AUTOCOMPLETE_URL = "https://places.googleapis.com/v1/places:autocomplete";
+const GOOGLE_PLACE_DETAILS_BASE_URL = "https://places.googleapis.com/v1/places";
+const ATTOM_INCOMPLETE_ADDRESS_MESSAGE =
+  "ATTOM needs a complete street address with city and state. Select a full dropdown address, or fill the details manually below.";
+const ATTOM_UNREADABLE_ADDRESS_MESSAGE =
+  "ATTOM could not read that address. Select a full street address from the dropdown with city, state, and ZIP, or fill the details manually below.";
+const ATTOM_NO_MATCH_MESSAGE = "No ATTOM match found. Fill the details manually below or use text autofill.";
+const US_STATE_ABBREVIATIONS: Record<string, string> = {
+  alabama: "AL",
+  alaska: "AK",
+  arizona: "AZ",
+  arkansas: "AR",
+  california: "CA",
+  colorado: "CO",
+  connecticut: "CT",
+  delaware: "DE",
+  florida: "FL",
+  georgia: "GA",
+  hawaii: "HI",
+  idaho: "ID",
+  illinois: "IL",
+  indiana: "IN",
+  iowa: "IA",
+  kansas: "KS",
+  kentucky: "KY",
+  louisiana: "LA",
+  maine: "ME",
+  maryland: "MD",
+  massachusetts: "MA",
+  michigan: "MI",
+  minnesota: "MN",
+  mississippi: "MS",
+  missouri: "MO",
+  montana: "MT",
+  nebraska: "NE",
+  nevada: "NV",
+  "new hampshire": "NH",
+  "new jersey": "NJ",
+  "new mexico": "NM",
+  "new york": "NY",
+  "north carolina": "NC",
+  "north dakota": "ND",
+  ohio: "OH",
+  oklahoma: "OK",
+  oregon: "OR",
+  pennsylvania: "PA",
+  "rhode island": "RI",
+  "south carolina": "SC",
+  "south dakota": "SD",
+  tennessee: "TN",
+  texas: "TX",
+  utah: "UT",
+  vermont: "VT",
+  virginia: "VA",
+  washington: "WA",
+  "west virginia": "WV",
+  wisconsin: "WI",
+  wyoming: "WY",
+  "district of columbia": "DC"
+};
 
 export async function searchListingAddressSuggestions(query: string): Promise<AddressSuggestion[]> {
   const cleanQuery = query.trim();
@@ -82,23 +156,29 @@ export async function searchListingAddressSuggestions(query: string): Promise<Ad
     });
   }
 
-  if (!suggestions.length) {
-    suggestions.push({ label: cleanQuery, source: "manual" });
-  }
-
   return suggestions.slice(0, 5);
 }
 
-export async function lookupPropertyByAddress(address: string): Promise<PropertyLookupResult> {
+export async function lookupPropertyByAddress(
+  address: string,
+  options: { placeId?: string | null } = {}
+): Promise<PropertyLookupResult> {
   const cleanAddress = address.trim();
   if (!cleanAddress) {
     throw new Error("Address is required");
   }
 
   const apiKey = requiredProviderEnv("ATTOM_API_KEY", "listing property lookup");
+  const googleAddress = await safeResolveGooglePlaceAddress(options.placeId);
+  const lookupAddress = googleAddress?.attomAddress ?? cleanAddress;
+  const displayAddress = googleAddress?.label ?? cleanAddress;
 
   const url = new URL(process.env.ATTOM_API_BASE_URL || ATTOM_BASE_URL);
-  const { address1, address2 } = splitAddress(cleanAddress);
+  const attomAddress = normalizeAttomRequestAddress(lookupAddress);
+  const { address1, address2 } = splitAddress(attomAddress);
+  if (!isSpecificAttomAddress(address1, address2)) {
+    return manualPropertyLookup(displayAddress, ATTOM_INCOMPLETE_ADDRESS_MESSAGE);
+  }
   if (address2) {
     url.searchParams.set("address1", address1);
     url.searchParams.set("address2", address2);
@@ -114,19 +194,26 @@ export async function lookupPropertyByAddress(address: string): Promise<Property
     cache: "no-store"
   });
 
+  if (response.status === 400) {
+    return manualPropertyLookup(displayAddress, ATTOM_UNREADABLE_ADDRESS_MESSAGE);
+  }
+
   if (response.status === 404) {
-    return manualPropertyLookup(cleanAddress, "No ATTOM match found. Keep the manual fields below.");
+    return manualPropertyLookup(displayAddress, ATTOM_NO_MATCH_MESSAGE);
   }
 
   if (!response.ok) {
-    throw new ProviderRequestError("ATTOM", `ATTOM lookup failed with ${response.status}`);
+    throw new ProviderRequestError(
+      "ATTOM",
+      `ATTOM lookup is unavailable right now (status ${response.status}). Check ATTOM API access, then fill the details manually below.`
+    );
   }
 
   const payload = (await response.json()) as Record<string, unknown>;
   const property = firstProperty(payload);
-  if (!property) return manualPropertyLookup(cleanAddress, "No ATTOM match found. Keep the manual fields below.");
+  if (!property) return manualPropertyLookup(displayAddress, ATTOM_NO_MATCH_MESSAGE);
 
-  return normalizeAttomProperty(property, cleanAddress);
+  return normalizeAttomProperty(property, displayAddress);
 }
 
 export function normalizeAttomProperty(property: AttomProperty, fallbackAddress: string): PropertyLookupResult {
@@ -211,6 +298,111 @@ function splitAddress(address: string) {
     address1: line1 || address,
     address2: rest.join(", ")
   };
+}
+
+async function safeResolveGooglePlaceAddress(placeId: string | null | undefined) {
+  if (!placeId?.trim()) return null;
+  try {
+    return await resolveGooglePlaceAddress(placeId);
+  } catch (error) {
+    if (error instanceof MissingProviderConfigError) throw error;
+    return null;
+  }
+}
+
+async function resolveGooglePlaceAddress(placeId: string): Promise<ResolvedGoogleAddress | null> {
+  const cleanPlaceId = placeId.trim();
+  if (!cleanPlaceId) return null;
+
+  const apiKey = requiredProviderEnv("GOOGLE_PLACES_API_KEY", "listing address details");
+  const response = await fetch(`${GOOGLE_PLACE_DETAILS_BASE_URL}/${encodeURIComponent(cleanPlaceId)}`, {
+    headers: {
+      "Content-Type": "application/json",
+      "X-Goog-Api-Key": apiKey,
+      "X-Goog-FieldMask": "formattedAddress,addressComponents"
+    },
+    cache: "no-store"
+  });
+
+  if (!response.ok) {
+    throw new ProviderRequestError("Google Places", `Google Places address details failed with ${response.status}`);
+  }
+
+  const details = (await response.json()) as GooglePlaceDetails;
+  return googlePlaceDetailsAddress(details);
+}
+
+function googlePlaceDetailsAddress(details: GooglePlaceDetails): ResolvedGoogleAddress | null {
+  const formattedAddress = details.formattedAddress?.trim();
+  const displayAddress = formattedAddress ? normalizeAttomRequestAddress(formattedAddress) : null;
+  const streetNumber = addressComponent(details, "street_number");
+  const route = addressComponent(details, "route");
+  const city =
+    addressComponent(details, "locality") ??
+    addressComponent(details, "postal_town") ??
+    addressComponent(details, "sublocality_level_1");
+  const state = addressComponent(details, "administrative_area_level_1", "short");
+  const postalCode = addressComponent(details, "postal_code");
+  const postalCodeSuffix = addressComponent(details, "postal_code_suffix");
+  const line1 = [streetNumber, route].filter(Boolean).join(" ").trim();
+  const zip = [postalCode, postalCodeSuffix].filter(Boolean).join("-");
+
+  if (line1 && city && state) {
+    const attomAddress = `${line1}, ${city}, ${state}${zip ? ` ${zip}` : ""}`;
+    return {
+      attomAddress,
+      label: displayAddress ?? attomAddress
+    };
+  }
+
+  if (displayAddress) {
+    return {
+      attomAddress: displayAddress,
+      label: displayAddress
+    };
+  }
+
+  return null;
+}
+
+function addressComponent(details: GooglePlaceDetails, type: string, valueType: "long" | "short" = "long") {
+  const component = details.addressComponents?.find((item) => item.types?.includes(type));
+  if (!component) return null;
+  const value =
+    valueType === "short"
+      ? component.shortText ?? component.short_name ?? component.longText ?? component.long_name
+      : component.longText ?? component.long_name ?? component.shortText ?? component.short_name;
+  return value?.trim() || null;
+}
+
+function normalizeAttomRequestAddress(address: string) {
+  const parts = address.split(",").map((part) => part.trim()).filter(Boolean);
+  while (parts.length > 1 && isCountryPart(parts[parts.length - 1])) {
+    parts.pop();
+  }
+  if (parts.length > 1) {
+    const lastPart = parts[parts.length - 1];
+    if (lastPart) parts[parts.length - 1] = normalizeStatePart(lastPart);
+  }
+  return parts.join(", ") || address.trim();
+}
+
+function normalizeStatePart(part: string) {
+  const cleanPart = part.replace(/\s+/g, " ").trim();
+  const match = cleanPart.match(/^([A-Za-z][A-Za-z .'-]*?)(?:\s+(\d{5}(?:-\d{4})?))?$/);
+  if (!match) return cleanPart;
+  const state = match[1].replace(/\./g, "").toLowerCase();
+  const stateCode = US_STATE_ABBREVIATIONS[state];
+  if (!stateCode) return cleanPart;
+  return match[2] ? `${stateCode} ${match[2]}` : stateCode;
+}
+
+function isCountryPart(part: string | undefined) {
+  return /^(us|u\.s\.|usa|u\.s\.a\.|united states|united states of america)$/i.test(part?.trim() ?? "");
+}
+
+function isSpecificAttomAddress(address1: string, address2: string) {
+  return /\d/.test(address1) && Boolean(address2.trim()) && /\b[A-Z]{2}\b/i.test(address2);
 }
 
 function looseAddressParts(address: string) {

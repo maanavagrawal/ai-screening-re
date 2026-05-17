@@ -8,7 +8,8 @@ import { providerErrorMessage, providerErrorStatus } from "@/lib/provider-config
 const SetupLocationSuggestionsSchema = z.object({
   query: z.string().min(2).max(120),
   market: z.string().max(120).optional(),
-  neighborhoods: z.array(z.string().min(1).max(120)).max(25).optional()
+  neighborhoods: z.array(z.string().min(1).max(120)).max(25).optional(),
+  scope: z.enum(["area", "market"]).optional()
 });
 
 export async function POST(request: Request) {
@@ -20,14 +21,16 @@ export async function POST(request: Request) {
 
   const query = parsed.data.query.trim();
   const market = parsed.data.market?.trim() ?? "";
+  const scope = parsed.data.scope ?? "area";
 
   try {
     const suggestions = await searchLocationSuggestions({
       query,
-      providerQuery: market && !query.toLowerCase().includes(market.toLowerCase()) ? `${query}, ${market}` : query,
+      providerQuery: scope === "market" || !market || query.toLowerCase().includes(market.toLowerCase()) ? query : `${query}, ${market}`,
+      includedPrimaryTypes: scope === "market" ? ["locality"] : undefined,
       agent: {
-        market,
-        neighborhoods: parsed.data.neighborhoods ?? []
+        market: scope === "market" ? "" : market,
+        neighborhoods: scope === "market" ? [] : (parsed.data.neighborhoods ?? [])
       },
       listings: []
     });
