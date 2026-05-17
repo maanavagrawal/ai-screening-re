@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { ArrowRight, Building2, Home, KeyRound } from "lucide-react";
 import Link from "next/link";
 import { SignupForm } from "@/components/auth/signup-form";
@@ -41,9 +41,15 @@ export function RootRoleEntry({
   signedInAgent?: { name: string; slug: string } | null;
 }) {
   const [role, setRole] = useState<Role | null>(null);
+  const [clientReady, setClientReady] = useState(false);
+
+  useEffect(() => {
+    setClientReady(true);
+  }, []);
 
   return (
     <div className="mx-auto flex min-h-[calc(100svh-3rem)] w-full max-w-4xl flex-col justify-center px-5 py-10">
+      <span className="sr-only" data-testid="root-ready">{clientReady ? "ready" : "loading"}</span>
       <header className="mb-10 flex items-center justify-between gap-4">
         <p className="text-sm font-semibold text-warm-muted">Memoir</p>
         {signedInAgent ? (
@@ -74,12 +80,13 @@ export function RootRoleEntry({
               <Fragment key={item.id}>
                 <button
                   className={cn(
-                    "agent-focus min-h-28 w-full rounded-2xl border bg-white/75 p-5 text-left transition hover:bg-white",
+                    "agent-focus min-h-28 w-full rounded-2xl border bg-white/75 p-5 text-left transition hover:bg-white disabled:cursor-wait disabled:opacity-60",
                     role === item.id
                       ? "border-[var(--agent-accent)] shadow-soft"
                       : "border-warm-border"
                   )}
                   type="button"
+                  disabled={!clientReady}
                   aria-pressed={role === item.id}
                   onClick={() => setRole(item.id)}
                 >

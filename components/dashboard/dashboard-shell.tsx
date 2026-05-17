@@ -460,8 +460,8 @@ function emptyListingDraft(): DashboardListingDraft {
   return {
     address: "",
     price: "",
-    beds: "3",
-    baths: "2",
+    beds: "",
+    baths: "",
     sqft: "",
     neighborhood: "",
     property_type: "",
@@ -784,10 +784,34 @@ function ListingForm({
     }));
   }
 
+  const detailsVisible = Boolean(
+    draft.address.trim() ||
+      draft.price ||
+      draft.beds ||
+      draft.baths ||
+      draft.sqft ||
+      draft.neighborhood ||
+      draft.property_type ||
+      draft.videoUrl ||
+      draft.features ||
+      draft.dealBreakerFlags ||
+      draft.description ||
+      draft.agent_note ||
+      lookupMessage ||
+      lookupResult ||
+      onCancel
+  );
+
   return (
-    <div className={cn("grid gap-3 sm:grid-cols-3", framed ? "mb-6 rounded-2xl border border-warm-border bg-white p-4" : "mb-0 p-0")}>
-      <div className="flex items-center justify-between gap-3 sm:col-span-3">
-        <h2 className="font-serif text-2xl">{title}</h2>
+    <div className={cn("space-y-4", framed ? "mb-6 rounded-2xl border border-warm-border bg-white p-4" : "mb-0 p-0")}>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-warm-muted">{title}</p>
+          <h2 className="mt-1 font-serif text-2xl">{onCancel ? title : "Start with the address"}</h2>
+        </div>
+        <span className="rounded-full bg-[#FAFAF7] px-3 py-2 text-xs font-semibold text-warm-muted">
+          {detailsVisible ? "Details ready" : "Address first"}
+        </span>
         {onCancel ? (
           <Button className="gap-2 px-3 py-2" variant="ghost" onClick={onCancel}>
             <X size={15} />
@@ -795,52 +819,77 @@ function ListingForm({
           </Button>
         ) : null}
       </div>
-      <AddressSuggestionInput
-        value={draft.address}
-        suggestions={addressSuggestions}
-        suggestionsOpen={suggestionsOpen}
-        suggestionsBusy={suggestionsBusy}
-        onChange={updateAddress}
-        onFocus={() => setSuggestionsOpen(draft.address.trim().length >= 3)}
-        onBlur={() => window.setTimeout(() => setSuggestionsOpen(false), 120)}
-        onEnterFirstSuggestion={() => {
-          if (addressSuggestions[0]) selectAddressSuggestion(addressSuggestions[0]);
-        }}
-        onSelect={selectAddressSuggestion}
-      />
-      <Button className="gap-2" variant="secondary" disabled={!draft.address || lookupBusy} onClick={() => lookupAndApply(draft.address)}>
-        <Search size={16} />
-        {lookupBusy ? "Looking..." : "Lookup facts"}
-      </Button>
-      {lookupMessage ? <p className="text-sm text-warm-muted sm:col-span-3">{lookupMessage}</p> : null}
-      {lookupResult ? (
-        <div className="rounded-xl border border-warm-border bg-[#FAFAF7] p-3 text-sm sm:col-span-3">
-          <p className="font-semibold">{lookupResult.normalizedAddress?.label ?? draft.address}</p>
-          <p className="mt-1 text-warm-muted">{propertyFactLine(lookupResult)}</p>
+
+      <section className="rounded-2xl border border-warm-border bg-[#FAFAF7] p-3">
+        <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+          <AddressSuggestionInput
+            value={draft.address}
+            suggestions={addressSuggestions}
+            suggestionsOpen={suggestionsOpen}
+            suggestionsBusy={suggestionsBusy}
+            onChange={updateAddress}
+            onFocus={() => setSuggestionsOpen(draft.address.trim().length >= 3)}
+            onBlur={() => window.setTimeout(() => setSuggestionsOpen(false), 120)}
+            onEnterFirstSuggestion={() => {
+              if (addressSuggestions[0]) selectAddressSuggestion(addressSuggestions[0]);
+            }}
+            onSelect={selectAddressSuggestion}
+          />
+          <Button className="gap-2 self-end" variant="secondary" disabled={!draft.address || lookupBusy} onClick={() => lookupAndApply(draft.address)}>
+            <Search size={16} />
+            {lookupBusy ? "Looking..." : "Lookup facts"}
+          </Button>
         </div>
+        {lookupMessage ? <p className="mt-2 text-sm text-warm-muted">{lookupMessage}</p> : null}
+        {lookupResult ? (
+          <div className="mt-3 rounded-xl border border-warm-border bg-white p-3 text-sm">
+            <p className="font-semibold">{lookupResult.normalizedAddress?.label ?? draft.address}</p>
+            <p className="mt-1 text-warm-muted">{propertyFactLine(lookupResult)}</p>
+          </div>
+        ) : null}
+      </section>
+
+      {detailsVisible ? (
+        <>
+          <section>
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-warm-muted">Required details</p>
+              {draft.price ? <p className="text-sm font-semibold text-warm-muted">{formatCurrency(Number(draft.price))}</p> : null}
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <DashboardListingInput label="Price" value={draft.price} onChange={(price) => setDraft((current) => ({ ...current, price: price.replace(/\D/g, "") }))} />
+              <DashboardListingInput label="Beds" value={draft.beds} onChange={(beds) => setDraft((current) => ({ ...current, beds }))} />
+              <DashboardListingInput label="Baths" value={draft.baths} onChange={(baths) => setDraft((current) => ({ ...current, baths }))} />
+              <DashboardListingInput label="Sqft" value={draft.sqft} onChange={(sqft) => setDraft((current) => ({ ...current, sqft: sqft.replace(/\D/g, "") }))} />
+              <DashboardListingInput label="Neighborhood" value={draft.neighborhood} onChange={(neighborhood) => setDraft((current) => ({ ...current, neighborhood }))} />
+              <DashboardListingInput label="Property type" value={draft.property_type} onChange={(property_type) => setDraft((current) => ({ ...current, property_type }))} />
+            </div>
+          </section>
+
+          <section className="border-t border-warm-border pt-4">
+            <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-warm-muted">Optional media and notes</p>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <DashboardListingInput className="sm:col-span-3" label="Video URL" value={draft.videoUrl} onChange={(videoUrl) => setDraft((current) => ({ ...current, videoUrl }))} />
+              <DashboardListingInput className="sm:col-span-3" label="Features" value={draft.features} onChange={(features) => setDraft((current) => ({ ...current, features }))} placeholder="yard, home office, walkable" />
+              <DashboardListingInput className="sm:col-span-3" label="Deal-breaker flags" value={draft.dealBreakerFlags} onChange={(dealBreakerFlags) => setDraft((current) => ({ ...current, dealBreakerFlags }))} placeholder="busy street, needs work" />
+              <label className="block sm:col-span-3">
+                <span className="text-xs font-semibold text-warm-muted">Description</span>
+                <textarea className="mt-1 min-h-20 w-full rounded-xl border-warm-border text-sm" value={draft.description} onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))} />
+              </label>
+              <label className="block sm:col-span-3">
+                <span className="text-xs font-semibold text-warm-muted">Agent note</span>
+                <textarea className="mt-1 min-h-20 w-full rounded-xl border-warm-border text-sm" value={draft.agent_note} onChange={(event) => setDraft((current) => ({ ...current, agent_note: event.target.value }))} />
+              </label>
+              <label className="flex items-center gap-2 text-sm sm:col-span-3">
+                <input type="checkbox" checked={draft.isPocket} onChange={(event) => setDraft((current) => ({ ...current, isPocket: event.target.checked }))} />
+                Off-market or pocket listing
+              </label>
+            </div>
+          </section>
+        </>
       ) : null}
-      <DashboardListingInput label="Price" value={draft.price} onChange={(price) => setDraft((current) => ({ ...current, price: price.replace(/\D/g, "") }))} />
-      <DashboardListingInput label="Beds" value={draft.beds} onChange={(beds) => setDraft((current) => ({ ...current, beds }))} />
-      <DashboardListingInput label="Baths" value={draft.baths} onChange={(baths) => setDraft((current) => ({ ...current, baths }))} />
-      <DashboardListingInput label="Sqft" value={draft.sqft} onChange={(sqft) => setDraft((current) => ({ ...current, sqft: sqft.replace(/\D/g, "") }))} />
-      <DashboardListingInput label="Neighborhood" value={draft.neighborhood} onChange={(neighborhood) => setDraft((current) => ({ ...current, neighborhood }))} />
-      <DashboardListingInput label="Property type" value={draft.property_type} onChange={(property_type) => setDraft((current) => ({ ...current, property_type }))} />
-      <DashboardListingInput className="sm:col-span-3" label="Video URL" value={draft.videoUrl} onChange={(videoUrl) => setDraft((current) => ({ ...current, videoUrl }))} />
-      <DashboardListingInput className="sm:col-span-3" label="Features" value={draft.features} onChange={(features) => setDraft((current) => ({ ...current, features }))} placeholder="yard, home office, walkable" />
-      <DashboardListingInput className="sm:col-span-3" label="Deal-breaker flags" value={draft.dealBreakerFlags} onChange={(dealBreakerFlags) => setDraft((current) => ({ ...current, dealBreakerFlags }))} placeholder="busy street, needs work" />
-      <label className="block sm:col-span-3">
-        <span className="text-xs font-semibold text-warm-muted">Description</span>
-        <textarea className="mt-1 min-h-20 w-full rounded-xl border-warm-border text-sm" value={draft.description} onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))} />
-      </label>
-      <label className="block sm:col-span-3">
-        <span className="text-xs font-semibold text-warm-muted">Agent note</span>
-        <textarea className="mt-1 min-h-20 w-full rounded-xl border-warm-border text-sm" value={draft.agent_note} onChange={(event) => setDraft((current) => ({ ...current, agent_note: event.target.value }))} />
-      </label>
-      <label className="flex items-center gap-2 text-sm sm:col-span-3">
-        <input type="checkbox" checked={draft.isPocket} onChange={(event) => setDraft((current) => ({ ...current, isPocket: event.target.checked }))} />
-        Off-market or pocket listing
-      </label>
-      <Button className="gap-2 sm:col-span-3" disabled={!listingDraftIsComplete(draft) || busy} onClick={onSubmit}>
+
+      <Button className="w-full gap-2" disabled={!listingDraftIsComplete(draft) || busy} onClick={onSubmit}>
         <Save size={16} />
         {busy ? "Saving..." : submitLabel}
       </Button>
@@ -875,7 +924,7 @@ function AddressSuggestionInput({
   const hasGoogleSuggestions = suggestions.some((suggestion) => suggestion.source === "google_places");
 
   return (
-    <div className="relative block sm:col-span-2">
+    <div className="relative block">
       <label className="text-xs font-semibold text-warm-muted" htmlFor={inputId}>Address</label>
       <input
         id={inputId}
@@ -900,7 +949,7 @@ function AddressSuggestionInput({
       {showDropdown ? (
         <div
           id={listboxId}
-          className="absolute left-0 right-0 top-full z-30 mt-2 overflow-hidden rounded-xl border border-warm-border bg-white text-sm shadow-soft"
+          className="z-30 mt-2 overflow-hidden rounded-xl border border-warm-border bg-white text-sm shadow-soft sm:absolute sm:left-0 sm:right-0 sm:top-full"
           role="listbox"
         >
           {suggestionsBusy && !suggestions.length ? (

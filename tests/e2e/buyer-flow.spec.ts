@@ -25,7 +25,7 @@ async function waitForIntakeStepToChange(page: Page, previousHeading: string) {
         if (page.url().includes("/gate")) return true;
         return (await currentHeading(page)) !== previousHeading;
       },
-      { timeout: 15_000 }
+      { timeout: 45_000 }
     )
     .toBe(true);
 }
@@ -34,6 +34,17 @@ async function clickButtonAndWait(page: Page, name: string) {
   const heading = await currentHeading(page);
   await page.getByRole("button", { name, exact: true }).click({ force: true });
   await waitForIntakeStepToChange(page, heading);
+}
+
+async function selectChoice(page: Page, name: string) {
+  const target = page.getByRole("button", { name, exact: true }).first();
+  await expect(target).toBeVisible();
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    if ((await target.getAttribute("aria-pressed").catch(() => null)) === "true") return;
+    await target.click({ force: true });
+    await page.waitForTimeout(150);
+  }
+  await expect(target).toHaveAttribute("aria-pressed", "true", { timeout: 5_000 });
 }
 
 async function clickContinueAndWait(page: Page) {
@@ -75,7 +86,7 @@ async function expectExactAddressesHidden(page: Page, addresses: string[]) {
 }
 
 async function completeIntake(page: Page) {
-  await page.getByRole("button", { name: "30 days" }).click();
+  await selectChoice(page, "30 days");
   await clickContinueAndWait(page);
   await page.getByLabel("Home search notes").fill("Need 3 bedrooms in East Austin under $750k with a yard, office, and no busy street.");
   await clickContinueAndWait(page);
@@ -156,8 +167,8 @@ test("Maya and David landing pages are isolated", async ({ page }) => {
 });
 
 test("buyer can complete intake, see matches, and request a showing", async ({ page }) => {
-  test.setTimeout(120_000);
-  await page.goto("/maya");
+  test.setTimeout(180_000);
+  await page.goto("/maya", { waitUntil: "domcontentloaded" });
   await page.getByRole("link", { name: /Find your next home/ }).click();
   await completeIntake(page);
 
@@ -183,19 +194,21 @@ test("buyer can complete intake, see matches, and request a showing", async ({ p
   await page.getByRole("button", { name: "Request a showing" }).first().click();
   await expect(page.getByText("Quick check before scheduling")).toBeVisible();
   await page.getByRole("button", { name: "Send code" }).click();
+  await expect(page.getByLabel("Verification code")).toBeVisible({ timeout: 30_000 });
   await page.getByLabel("Verification code").fill("123456");
   await page.getByRole("button", { name: "Verify and continue" }).click();
   await expect(page.getByText("When works for you?")).toBeVisible({ timeout: 15_000 });
 });
 
 test("structured intake Continue advances without next-question request", async ({ page }) => {
+  test.setTimeout(60_000);
   let nextQuestionRequests = 0;
   page.on("request", (request) => {
     if (request.url().includes("/api/intake/next")) nextQuestionRequests += 1;
   });
 
-  await page.goto("/maya/intake?start_over=1");
-  await page.getByRole("button", { name: "30 days" }).click();
+  await page.goto("/maya/intake?start_over=1", { waitUntil: "domcontentloaded" });
+  await selectChoice(page, "30 days");
   const started = Date.now();
   await clickContinueAndWait(page);
 

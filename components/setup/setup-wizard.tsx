@@ -417,8 +417,8 @@ function Listings({
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="font-serif text-5xl leading-none">Add 3 of your recent listings.</h1>
-        <p className="mt-4 text-warm-muted">Paste a link or fill in manually. The buyer feed preview fills in as you go.</p>
+        <h1 className="font-serif text-5xl leading-none">Add 3 recent listings.</h1>
+        <p className="mt-4 text-warm-muted">Start with each address. Media links and captions are optional helpers.</p>
       </div>
       <div className="space-y-4">
         {listings.slice(0, 3).map((listing, index) => (
@@ -1187,7 +1187,7 @@ function SetupAddressSuggestionInput({
       {showDropdown ? (
         <div
           id={listboxId}
-          className="absolute left-0 right-0 top-full z-30 mt-2 overflow-hidden rounded-xl border border-warm-border bg-white text-sm shadow-soft"
+          className="z-30 mt-2 overflow-hidden rounded-xl border border-warm-border bg-white text-sm shadow-soft sm:absolute sm:left-0 sm:right-0 sm:top-full"
           role="listbox"
         >
           {suggestionsBusy && !suggestions.length ? (

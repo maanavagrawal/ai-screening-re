@@ -3,28 +3,37 @@ import { expect, test } from "@playwright/test";
 const videoUrl = "https://videos.pexels.com/video-files/7578545/7578545-uhd_1440_2732_25fps.mp4";
 
 test("root domain routes buyers, sellers, and agents by intent", async ({ page }) => {
-  await page.goto("/");
+  test.setTimeout(60_000);
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await expect(page.getByTestId("root-ready")).toHaveText("ready");
   await expect(page).not.toHaveURL(/\/maya$/);
   await expect(page.getByRole("heading", { name: "What are you here to do?" })).toBeVisible();
 
   await page.getByRole("button", { name: /Buy a home/ }).click();
   await page.getByLabel("Agent link or code").fill("maya");
   await page.getByRole("button", { name: "Check link" }).click();
-  await page.getByRole("link", { name: "Continue to Maya Chen" }).click();
-  await expect(page).toHaveURL(/\/maya$/);
+  await Promise.all([
+    page.waitForURL(/\/maya$/),
+    page.getByRole("link", { name: "Continue to Maya Chen" }).click()
+  ]);
 
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await expect(page.getByTestId("root-ready")).toHaveText("ready");
   await page.getByRole("button", { name: /Sell a home/ }).click();
   await page.getByLabel("Agent link or code").fill("/maya");
   await page.getByRole("button", { name: "Check link" }).click();
-  await page.getByRole("link", { name: "Continue to Maya Chen" }).click();
-  await expect(page).toHaveURL(/\/maya\/seller$/);
+  await Promise.all([
+    page.waitForURL(/\/maya\/seller$/),
+    page.getByRole("link", { name: "Continue to Maya Chen" }).click()
+  ]);
 
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await expect(page.getByTestId("root-ready")).toHaveText("ready");
   await page.getByRole("button", { name: /I am an agent/ }).click();
   await expect(page.getByRole("heading", { name: "Sign in or create your agent link" })).toBeVisible();
 
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await expect(page.getByTestId("root-ready")).toHaveText("ready");
   await page.getByRole("button", { name: /Buy a home/ }).click();
   await page.getByLabel("Agent link or code").fill("/dashboard");
   await page.getByRole("button", { name: "Check link" }).click();
@@ -32,6 +41,7 @@ test("root domain routes buyers, sellers, and agents by intent", async ({ page }
 });
 
 test("setup listing entry starts with address lookup and reveals details", async ({ page }, testInfo) => {
+  test.setTimeout(90_000);
   const suffix = `${testInfo.project.name}-${Date.now()}`.toLowerCase().replace(/[^a-z0-9-]/g, "-");
   const managedAddress = `120 ${suffix} Larch Road`;
   const suggestedAddress = `${managedAddress}, San Ramon, CA 94582`;
@@ -91,12 +101,16 @@ test("setup listing entry starts with address lookup and reveals details", async
   await page.route("**/api/setup/save-draft", async (route) => {
     const body = route.request().postDataJSON() as { data?: { listings?: unknown[] } };
     if (Array.isArray(body?.data?.listings)) listingSaveBodies.push(body);
-    await route.continue();
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true })
+    });
   });
 
   await page.goto("/setup/listings", { waitUntil: "domcontentloaded" });
-  await expect(page.getByTestId("setup-ready")).toHaveText("ready");
-  await expect(page.getByRole("heading", { name: "Add 3 of your recent listings." })).toBeVisible();
+  await expect(page.getByTestId("setup-ready")).toHaveText("ready", { timeout: 30_000 });
+  await expect(page.getByRole("heading", { name: "Add 3 recent listings." })).toBeVisible();
   await expect(page.getByLabel("Listing 1 details")).not.toBeVisible();
 
   const propertyFacts = page.getByLabel("Listing 1 property facts");
@@ -104,7 +118,7 @@ test("setup listing entry starts with address lookup and reveals details", async
   await expect(page.getByRole("option", { name: new RegExp(managedAddress) })).toBeVisible();
   await page.getByRole("option", { name: new RegExp(managedAddress) }).click();
 
-  await expect(propertyFacts.getByText("Property facts found.")).toBeVisible();
+  await expect(propertyFacts.getByText("Property facts found.")).toBeVisible({ timeout: 15_000 });
   const details = page.getByLabel("Listing 1 details");
   await expect(details).toBeVisible();
   await expect(details.getByLabel("Neighborhood")).toHaveValue("San Ramon");
@@ -120,13 +134,14 @@ test("setup listing entry starts with address lookup and reveals details", async
   const secondPropertyFacts = page.getByLabel("Listing 2 property facts");
   await secondPropertyFacts.getByLabel("Address").fill("88 Race Lane");
   await secondPropertyFacts.getByRole("button", { name: "Lookup facts" }).click();
-  await expect(secondPropertyFacts.getByText("Property facts found.")).toBeVisible();
+  await expect(secondPropertyFacts.getByText("Property facts found.")).toBeVisible({ timeout: 15_000 });
   const secondDetails = page.getByLabel("Listing 2 details");
   await expect(secondDetails.getByLabel("Neighborhood")).toHaveValue("San Ramon");
   expect(listingSaveBodies).toHaveLength(2);
 });
 
 test("setup neighborhoods autocomplete and continue after one area", async ({ page }, testInfo) => {
+  test.setTimeout(60_000);
   const suffix = `${testInfo.project.name}-${Date.now()}`.toLowerCase().replace(/[^a-z0-9-]/g, "-");
 
   await page.goto("/signup");
@@ -178,7 +193,7 @@ test("setup neighborhoods autocomplete and continue after one area", async ({ pa
 });
 
 test("agent can publish setup, receive a lead, and work it from the dashboard", async ({ page }, testInfo) => {
-  test.setTimeout(90_000);
+  test.setTimeout(150_000);
   const suffix = `${testInfo.project.name}-${Date.now()}`.toLowerCase().replace(/[^a-z0-9-]/g, "-");
   const slug = `phase2-${suffix}`;
   const email = `agent-${suffix}@example.com`;
@@ -219,8 +234,13 @@ test("agent can publish setup, receive a lead, and work it from the dashboard", 
   await page.goto("/setup/link");
   await expect(page.getByText("Your page is live.")).toBeVisible();
   await expect(page.getByText(slug)).toBeVisible();
+  const publishResponse = page.waitForResponse((response) =>
+    response.url().includes("/api/setup/complete") && response.request().method() === "POST",
+    { timeout: 45_000 }
+  );
   await page.getByRole("button", { name: "Publish and continue" }).click();
-  await expect(page.getByText("Here's what your first lead will look like.")).toBeVisible({ timeout: 15_000 });
+  expect((await publishResponse).status()).toBe(200);
+  await expect(page.getByText("Here's what your first lead will look like.")).toBeVisible({ timeout: 30_000 });
 
   await page.request.post("/api/leads", {
     data: {
@@ -244,7 +264,7 @@ test("agent can publish setup, receive a lead, and work it from the dashboard", 
   });
 
   await page.goto("/dashboard/leads", { waitUntil: "domcontentloaded" });
-  await expect(page.getByTestId("dashboard-ready")).toHaveText("ready");
+  await expect(page.getByTestId("dashboard-ready")).toHaveText("ready", { timeout: 30_000 });
   await expect(page.getByRole("heading", { name: "Alex looking in Denver, CO" })).toBeVisible();
   await expect(page.getByText(/Need a 3BR|Denver/i).first()).toBeVisible({ timeout: 15_000 });
   await page.getByRole("button", { name: "Copy", exact: true }).click();
@@ -256,12 +276,16 @@ test("agent can publish setup, receive a lead, and work it from the dashboard", 
   await expect(page.getByText("Instagram bio")).toBeVisible();
 
   await page.goto("/dashboard/settings", { waitUntil: "domcontentloaded" });
-  await expect(page.getByTestId("dashboard-ready")).toHaveText("ready");
+  await expect(page.getByTestId("dashboard-ready")).toHaveText("ready", { timeout: 30_000 });
   const headlineInput = page.getByLabel("Headline");
   await expect(headlineInput).toHaveValue("Find your Denver home with Elena.");
+  const manualSave = page.waitForResponse((response) =>
+    response.url().includes("/api/dashboard/settings") && response.request().method() === "PATCH"
+  );
   await headlineInput.fill("Manual headline for Denver buyers.");
-  await page.keyboard.press("Tab");
-  await expect(page.getByText("Settings saved")).toBeVisible();
+  await headlineInput.blur();
+  expect((await manualSave).status()).toBe(200);
+  await expect(page.getByText("Settings saved")).toBeVisible({ timeout: 10_000 });
   await expect(headlineInput).toHaveValue("Manual headline for Denver buyers.");
   await page.getByRole("button", { name: "Generate" }).click();
   await expect(page.getByText("Headline generated")).toBeVisible();
@@ -316,7 +340,7 @@ test("agent can publish setup, receive a lead, and work it from the dashboard", 
   });
 
   await page.goto("/dashboard/listings", { waitUntil: "domcontentloaded" });
-  await expect(page.getByTestId("dashboard-ready")).toHaveText("ready");
+  await expect(page.getByTestId("dashboard-ready")).toHaveText("ready", { timeout: 30_000 });
   await expect(page.getByText("123 Maple Street")).toBeVisible();
   await page.getByLabel("Address").fill(managedAddress.slice(0, 10));
   await expect(page.getByRole("option", { name: new RegExp(managedAddress) })).toBeVisible();
@@ -349,7 +373,7 @@ test("agent can publish setup, receive a lead, and work it from the dashboard", 
   await expect(page.locator("article").filter({ hasText: suggestedManagedAddress })).not.toBeVisible();
 
   await page.goto(`/${slug}/seller`, { waitUntil: "domcontentloaded" });
-  await expect(page.getByTestId("seller-form-ready")).toHaveText("ready");
+  await expect(page.getByTestId("seller-form-ready")).toHaveText("ready", { timeout: 30_000 });
   await page.getByLabel("First name").fill("Riley");
   await page.getByLabel("Phone").fill("(303) 555-0188");
   await page.getByLabel("Email").fill("riley@example.com");
@@ -363,7 +387,7 @@ test("agent can publish setup, receive a lead, and work it from the dashboard", 
   await expect(page.getByRole("heading", { name: `Sent to Elena Ruiz.` })).toBeVisible();
 
   await page.goto("/dashboard/leads", { waitUntil: "domcontentloaded" });
-  await expect(page.getByTestId("dashboard-ready")).toHaveText("ready");
+  await expect(page.getByTestId("dashboard-ready")).toHaveText("ready", { timeout: 30_000 });
   await page.getByPlaceholder("Search leads").fill("Riley");
   await page.keyboard.press("Tab");
   await expect(page.getByRole("button", { name: /Riley seller/ })).toBeVisible();

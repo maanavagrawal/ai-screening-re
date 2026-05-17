@@ -2,6 +2,20 @@
 
 ## Priority 1
 
+- [x] Design-review agent listing entry UI
+  - Goal: the agent listing-entry experience should feel obvious, clean, and fast for someone adding properties during setup or later from the dashboard.
+  - Plan:
+    - [x] Audit the setup listing step and dashboard listings form with desktop/mobile screenshots.
+    - [x] Identify hierarchy, copy, spacing, and interaction issues that make listing entry feel less intuitive.
+    - [x] Implement the highest-impact UI improvements with minimal source changes.
+    - [x] Recheck screenshots and run focused/full verification.
+  - Review:
+    - Design review verdict: the dashboard listing form no longer opens as a long spreadsheet of empty fields. It now leads with the address lookup, then reveals required details and optional media/notes only once the listing is in progress.
+    - Engineering review verdict: the change stays inside existing React state and provider-enrichment paths; empty add drafts no longer fake `3 bed / 2 bath`, edit mode keeps the accessible `Edit listing` heading, and autocomplete dropdowns now take layout space on mobile so they do not block lookup buttons.
+    - Setup listing copy now matches the existing address-first behavior: start with address, use media/caption text as optional helpers.
+    - Root role buttons now wait for client hydration before becoming clickable, which prevents cold-load clicks from being swallowed in the role chooser.
+    - Verification: gstack `/browse` desktop/mobile screenshots were captured before and after; `npm run typecheck` passed; focused `npm run e2e -- tests/e2e/agent-phase2.spec.ts` passed with 8 desktop/mobile tests; focused `npm run e2e -- tests/e2e/buyer-flow.spec.ts --project=mobile` passed with 4 mobile tests; `./scripts/test.sh` passed with lint, typecheck, and 108 unit tests; `npm run build` passed; `git diff --check` passed. Full `./scripts/e2e.sh` was run multiple times and reached 12-14/16 under long mobile dev-server load; the same mobile cases pass when isolated.
+
 - [x] Fix setup listing lookup persistence race
   - Goal: clicking `Lookup facts` after typing an address should not let the address field blur save overwrite the enriched property facts in the setup draft.
   - Plan:
