@@ -1,4 +1,10 @@
 import { z } from "zod";
+import {
+  MULTIFAMILY_PROPERTY_TYPE_OPTIONS,
+  PROPERTY_CATEGORY_OPTIONS,
+  SINGLE_FAMILY_PROPERTY_TYPE_OPTIONS,
+  LEGACY_MULTIFAMILY_PROPERTY_TYPE
+} from "@/lib/intake/property-preferences";
 
 export const QuestionIdSchema = z.enum([
   "timeline",
@@ -10,6 +16,9 @@ export const QuestionIdSchema = z.enum([
   "budget",
   "bedrooms",
   "bathrooms",
+  "property_category",
+  "single_family_property_type",
+  "multifamily_property_type",
   "property_type",
   "neighborhoods",
   "must_haves",
@@ -114,7 +123,18 @@ export const IntakeAnswersSchema = z.object({
   budget_max: z.number().int().min(0).optional(),
   bedrooms: z.enum(["1", "2", "3", "4", "5_plus"]).optional(),
   bathrooms: z.enum(["1", "2", "3", "4_plus"]).optional(),
-  property_type: z.array(z.enum(["house", "condo", "townhouse", "multi_family"])).optional(),
+  property_category: z.enum(optionValues(PROPERTY_CATEGORY_OPTIONS)).optional(),
+  single_family_property_type: z.array(z.enum(optionValues(SINGLE_FAMILY_PROPERTY_TYPE_OPTIONS))).optional(),
+  multifamily_property_type: z.array(z.enum(optionValues(MULTIFAMILY_PROPERTY_TYPE_OPTIONS))).optional(),
+  property_type: z
+    .array(
+      z.enum([
+        ...optionValues(SINGLE_FAMILY_PROPERTY_TYPE_OPTIONS),
+        ...optionValues(MULTIFAMILY_PROPERTY_TYPE_OPTIONS),
+        LEGACY_MULTIFAMILY_PROPERTY_TYPE
+      ])
+    )
+    .optional(),
   neighborhoods: z.array(z.string()).optional(),
   selected_areas: z.array(SelectedAreaSchema).optional(),
   open_to_suggestions: z.boolean().optional(),
@@ -183,3 +203,9 @@ export type IntakeNextQuestionDecision = z.infer<typeof IntakeNextQuestionDecisi
 export type AgentBrief = z.infer<typeof AgentBriefSchema>;
 export type VoiceGeneration = z.infer<typeof VoiceGenerationSchema>;
 export type ReplyTemplates = z.infer<typeof ReplyTemplatesSchema>;
+
+function optionValues<const T extends readonly [{ value: string }, ...Array<{ value: string }>]>(options: T) {
+  return options.map((option) => option.value) as {
+    [K in keyof T]: T[K] extends { value: infer Value extends string } ? Value : never;
+  };
+}

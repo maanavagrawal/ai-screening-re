@@ -13,6 +13,7 @@ import {
   FinancingQuestion,
   LocationQuestion,
   MultiSelectQuestion,
+  PropertyCategoryQuestion,
   SegmentedQuestion
 } from "@/components/intake/questions/choice-questions";
 import { FreeTextQuestion } from "@/components/intake/questions/free-text-question";
@@ -21,6 +22,13 @@ import { TimelineQuestion } from "@/components/intake/questions/timeline-questio
 import { AnythingElseQuestion } from "@/components/intake/questions/anything-else-question";
 import type { FreeTextExtractionResult, IntakeAnswers, QuestionId } from "@/lib/ai/schemas";
 import { fallbackNextQuestion } from "@/lib/intake/next-question";
+import {
+  combinePropertyTypes,
+  MULTIFAMILY_PROPERTY_TYPE_OPTIONS,
+  propertyCategoryIncludesMultifamily,
+  propertyCategoryIncludesSingleFamily,
+  SINGLE_FAMILY_PROPERTY_TYPE_OPTIONS
+} from "@/lib/intake/property-preferences";
 import type { Agent } from "@/lib/types";
 import { useSessionId } from "@/hooks/use-session-id";
 import { useTrackEvent } from "@/hooks/use-track-event";
@@ -74,7 +82,7 @@ export function IntakeFlow({ agent }: { agent: Agent }) {
       try {
         const parsed = JSON.parse(existing) as { answers?: IntakeAnswers; question?: QuestionId };
         if (parsed.answers) setAnswers(parsed.answers);
-        if (parsed.question) setQuestion(parsed.question);
+        if (parsed.question) setQuestion(parsed.question === "property_type" ? "property_category" : parsed.question);
       } catch {
         window.localStorage.removeItem(storageKey);
         track("intake_started");
@@ -117,6 +125,21 @@ export function IntakeFlow({ agent }: { agent: Agent }) {
     }
     if (questionId === "bedrooms") nextAnswers.bedrooms = value as IntakeAnswers["bedrooms"];
     if (questionId === "bathrooms") nextAnswers.bathrooms = value as IntakeAnswers["bathrooms"];
+    if (questionId === "property_category") {
+      nextAnswers.property_category = value as NonNullable<IntakeAnswers["property_category"]>;
+      if (!propertyCategoryIncludesSingleFamily(nextAnswers.property_category)) nextAnswers.single_family_property_type = [];
+      if (!propertyCategoryIncludesMultifamily(nextAnswers.property_category)) nextAnswers.multifamily_property_type = [];
+      nextAnswers.property_type = [];
+      nextAnswers.property_type = combinePropertyTypes(nextAnswers);
+    }
+    if (questionId === "single_family_property_type") {
+      nextAnswers.single_family_property_type = value as NonNullable<IntakeAnswers["single_family_property_type"]>;
+      nextAnswers.property_type = combinePropertyTypes(nextAnswers);
+    }
+    if (questionId === "multifamily_property_type") {
+      nextAnswers.multifamily_property_type = value as NonNullable<IntakeAnswers["multifamily_property_type"]>;
+      nextAnswers.property_type = combinePropertyTypes(nextAnswers);
+    }
     if (questionId === "property_type") nextAnswers.property_type = value as NonNullable<IntakeAnswers["property_type"]>;
     if (questionId === "neighborhoods") {
       const locationAnswer = value as {
@@ -237,17 +260,23 @@ export function IntakeFlow({ agent }: { agent: Agent }) {
             <SegmentedQuestion disabled={interactionDisabled} title="How many bedrooms?" options={["1", "2", "3", "4", "5_plus"]} onAnswer={(value) => void advance("bedrooms", value)} />
           ) : question === "bathrooms" ? (
             <SegmentedQuestion disabled={interactionDisabled} title="How many bathrooms?" options={["1", "2", "3", "4_plus"]} onAnswer={(value) => void advance("bathrooms", value)} />
-          ) : question === "property_type" ? (
+          ) : question === "property_category" ? (
+            <PropertyCategoryQuestion disabled={interactionDisabled} onAnswer={(value) => void advance("property_category", value)} />
+          ) : question === "single_family_property_type" ? (
             <MultiSelectQuestion
               disabled={interactionDisabled}
-              title="What kind of home?"
-              options={[
-                { label: "House", value: "house" },
-                { label: "Condo", value: "condo" },
-                { label: "Townhouse", value: "townhouse" },
-                { label: "Multi-family", value: "multi_family" }
-              ]}
-              onAnswer={(value) => void advance("property_type", value)}
+              title="Which single-family types should we include?"
+              options={SINGLE_FAMILY_PROPERTY_TYPE_OPTIONS}
+              initial={answers.single_family_property_type}
+              onAnswer={(value) => void advance("single_family_property_type", value)}
+            />
+          ) : question === "multifamily_property_type" ? (
+            <MultiSelectQuestion
+              disabled={interactionDisabled}
+              title="Which multifamily types should we include?"
+              options={MULTIFAMILY_PROPERTY_TYPE_OPTIONS}
+              initial={answers.multifamily_property_type}
+              onAnswer={(value) => void advance("multifamily_property_type", value)}
             />
           ) : question === "neighborhoods" ? (
             <LocationQuestion

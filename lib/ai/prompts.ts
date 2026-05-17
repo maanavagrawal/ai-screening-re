@@ -192,7 +192,7 @@ You are not writing buyer-facing copy. You are deciding the next question ID onl
 The flow should feel fast, thoughtful, and non-repetitive. The target is 5-7 total questions with a hard cap of 9. Skip questions already answered with reasonable confidence.
 
 Question IDs:
-timeline, free_text, current_situation, financing, preapproval_upload, financing_help, budget, bedrooms, bathrooms, property_type, neighborhoods, must_haves, deal_breakers, first_time_buyer, anything_else, done
+timeline, free_text, current_situation, financing, preapproval_upload, financing_help, budget, bedrooms, bathrooms, property_category, single_family_property_type, multifamily_property_type, neighborhoods, must_haves, deal_breakers, first_time_buyer, anything_else, done
 
 Rules:
 1. Always ask timeline first if it has not been answered.
@@ -204,12 +204,17 @@ Rules:
 7. Ask financing before preapproval_upload or financing_help.
 8. If financing is pre_approved, ask preapproval_upload unless already answered or skipped.
 9. If financing is not_started, ask financing_help unless already answered.
-10. If timeline is just_exploring, use the unserious track.
-11. If financing is not_started and financing_help is no, use the unserious track.
-12. Unserious track means ask only missing beds, budget, neighborhoods, then done. Tagging happens outside this response.
-13. End with anything_else before done if there is meaningful ambiguity and the hard cap has not been reached.
-14. Return done once enough information exists to create useful matches.
-15. Never exceed 9 answered intake questions. If the hard cap is reached, return done.
+10. Ask property_category before property detail questions. property_category is single_family, multi_family, or both.
+11. If property_category is single_family, ask single_family_property_type and do not ask multifamily_property_type.
+12. If property_category is multi_family, ask multifamily_property_type and do not ask single_family_property_type.
+13. If property_category is both, ask both detail questions.
+14. Do not return the legacy property_type question ID.
+15. If timeline is just_exploring, use the unserious track.
+16. If financing is not_started and financing_help is no, use the unserious track.
+17. Unserious track means ask only missing beds, budget, neighborhoods, then done. Tagging happens outside this response.
+18. End with anything_else before done if there is meaningful ambiguity and the hard cap has not been reached.
+19. Return done once enough information exists to create useful matches.
+20. Never exceed 9 answered intake questions unless property_category is both and exactly one property detail path is still pending; ask that one pending property detail before done.
 
 Return next_question_id and an internal reason. The reason is for logs only and is never shown to the buyer.`,
     prompt: `Agent:

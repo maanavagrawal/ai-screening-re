@@ -1,5 +1,6 @@
 "use client";
 
+import { useId } from "react";
 import { motion } from "framer-motion";
 import { Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -39,22 +40,26 @@ export function ChoiceGrid({
   multi = false,
   disabled = false
 }: {
-  options: Array<{ label: string; value: string; description?: string }>;
+  options: ReadonlyArray<{ label: string; value: string; description?: string }>;
   value?: string | string[];
   onSelect: (value: string | string[]) => void;
   multi?: boolean;
   disabled?: boolean;
 }) {
   const values = Array.isArray(value) ? value : value ? [value] : [];
+  const descriptionBaseId = useId();
 
   return (
     <div className="grid gap-3">
       {options.map((option) => {
         const selected = values.includes(option.value);
+        const descriptionId = option.description ? `${descriptionBaseId}-${option.value}` : undefined;
         return (
           <button
             key={option.value}
             type="button"
+            aria-label={option.label}
+            aria-describedby={descriptionId}
             aria-pressed={selected}
             disabled={disabled}
             onClick={() => {
@@ -76,7 +81,7 @@ export function ChoiceGrid({
             <span>
               <span className="block text-sm font-semibold">{option.label}</span>
               {option.description ? (
-                <span className="mt-1 block text-sm text-warm-muted">{option.description}</span>
+                <span id={descriptionId} className="mt-1 block text-sm text-warm-muted">{option.description}</span>
               ) : null}
             </span>
             {selected ? <Check size={18} className="text-[var(--agent-accent)]" /> : null}

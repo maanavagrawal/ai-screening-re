@@ -1,4 +1,11 @@
 import type { FreeTextExtractionResult, IntakeAnswers, QuestionId } from "@/lib/ai/schemas";
+import {
+  categoryFromPropertyTypes,
+  hasMultifamilyPropertyTypes,
+  hasSingleFamilyPropertyTypes,
+  propertyCategoryIncludesMultifamily,
+  propertyCategoryIncludesSingleFamily
+} from "@/lib/intake/property-preferences";
 
 export function questionAnswered(answers: IntakeAnswers, question: QuestionId) {
   const extraction = answers.accepted_extraction ?? answers.extraction ?? {};
@@ -7,6 +14,13 @@ export function questionAnswered(answers: IntakeAnswers, question: QuestionId) {
   if (question === "budget") return answers.budget_min != null || answers.budget_max != null;
   if (question === "bedrooms") return Boolean(answers.bedrooms) || extraction.beds != null;
   if (question === "bathrooms") return Boolean(answers.bathrooms) || extraction.baths != null;
+  if (question === "property_category") return Boolean(answers.property_category ?? categoryFromPropertyTypes(answers.property_type));
+  if (question === "single_family_property_type") {
+    return Boolean(answers.single_family_property_type?.length || hasSingleFamilyPropertyTypes(answers.property_type));
+  }
+  if (question === "multifamily_property_type") {
+    return Boolean(answers.multifamily_property_type?.length || hasMultifamilyPropertyTypes(answers.property_type));
+  }
   return Object.prototype.hasOwnProperty.call(answers, question);
 }
 
@@ -18,12 +32,16 @@ export function fallbackNextQuestion(answers: IntakeAnswers): { next_question_id
   const count = answers.answered_question_ids?.length ?? 0;
   if (!questionAnswered(answers, "timeline")) return { next_question_id: "timeline", reason: "Timeline always starts." };
   if (!questionAnswered(answers, "free_text")) return { next_question_id: "free_text", reason: "Free text is always second." };
+  const browsing = isBrowsingTrack(answers);
+  const pendingPropertyQuestion = browsing ? undefined : nextPendingPropertyQuestion(answers);
+  if (count >= 9 && pendingPropertyQuestion) {
+    return {
+      next_question_id: pendingPropertyQuestion,
+      reason: "Property branch detail is still pending."
+    };
+  }
   if (count >= 9) return { next_question_id: "done", reason: "Hard cap reached." };
 
-  const browsing =
-    answers.timeline?.preset === "just_exploring" ||
-    (answers.financing === "not_started" && answers.financing_help === "no") ||
-    answers.tier_hint === "browsing";
   const browsingTrack: QuestionId[] = ["bedrooms", "budget", "neighborhoods"];
   const fullTrack: QuestionId[] = [
     "current_situation",
@@ -31,7 +49,7 @@ export function fallbackNextQuestion(answers: IntakeAnswers): { next_question_id
     answers.financing === "pre_approved" ? "preapproval_upload" : "financing_help",
     "budget",
     "bedrooms",
-    "property_type",
+    ...propertyPreferenceTrack(answers),
     "neighborhoods",
     "must_haves",
     "deal_breakers",
@@ -70,9 +88,59 @@ export function safeNextQuestionDecision(
   answers: IntakeAnswers,
   decision: { next_question_id: QuestionId; reason?: string }
 ) {
-  if (decision.next_question_id === "done") return decision;
+  if (decision.next_question_id === "done") {
+    const fallback = fallbackNextQuestion(answers);
+    if (isPropertyPreferenceQuestion(fallback.next_question_id)) return fallback;
+    return decision;
+  }
+  if (!questionAllowedForAnswers(answers, decision.next_question_id)) {
+    return fallbackNextQuestion(answers);
+  }
   if (questionAnswered(answers, decision.next_question_id)) {
     return fallbackNextQuestion(answers);
   }
   return decision;
+}
+
+function propertyPreferenceTrack(answers: IntakeAnswers): QuestionId[] {
+  const category = answers.property_category ?? categoryFromPropertyTypes(answers.property_type);
+  if (!category) return ["property_category"];
+
+  const questions: QuestionId[] = [];
+  if (propertyCategoryIncludesSingleFamily(category)) questions.push("single_family_property_type");
+  if (propertyCategoryIncludesMultifamily(category)) questions.push("multifamily_property_type");
+  return questions;
+}
+
+function nextPendingPropertyQuestion(answers: IntakeAnswers) {
+  return propertyPreferenceTrack(answers).find((question) => !questionAnswered(answers, question));
+}
+
+function isPropertyPreferenceQuestion(question: QuestionId) {
+  return (
+    question === "property_category" ||
+    question === "single_family_property_type" ||
+    question === "multifamily_property_type"
+  );
+}
+
+function isBrowsingTrack(answers: IntakeAnswers) {
+  return (
+    answers.timeline?.preset === "just_exploring" ||
+    (answers.financing === "not_started" && answers.financing_help === "no") ||
+    answers.tier_hint === "browsing"
+  );
+}
+
+function questionAllowedForAnswers(answers: IntakeAnswers, question: QuestionId) {
+  if (question === "property_type") return false;
+  if (question === "single_family_property_type") {
+    const category = answers.property_category ?? categoryFromPropertyTypes(answers.property_type);
+    return propertyCategoryIncludesSingleFamily(category);
+  }
+  if (question === "multifamily_property_type") {
+    const category = answers.property_category ?? categoryFromPropertyTypes(answers.property_type);
+    return propertyCategoryIncludesMultifamily(category);
+  }
+  return true;
 }

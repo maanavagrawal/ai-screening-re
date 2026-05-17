@@ -129,7 +129,8 @@ async function completeIntake(page: Page) {
       await clickContinueAndWait(page);
       continue;
     }
-    if (await answerIfVisible(page, "House")) continue;
+    if (await answerIfVisible(page, "Single-family")) continue;
+    if (await answerIfVisible(page, "Detached house")) continue;
     if (await answerIfVisible(page, "No")) continue;
     const skip = page.getByRole("button", { name: "Skip" }).first();
     if (await skip.isVisible().catch(() => false)) {
@@ -203,6 +204,63 @@ test("buyer can complete intake, see matches, and request a showing", async ({ p
   await page.getByLabel("Verification code").fill("123456");
   await page.getByRole("button", { name: "Verify and continue" }).click();
   await expect(page.getByText("When works for you?")).toBeVisible({ timeout: 15_000 });
+});
+
+async function advanceToPropertyCategory(page: Page) {
+  await page.goto("/maya/intake?start_over=1", { waitUntil: "domcontentloaded" });
+  await selectChoice(page, "30 days");
+  await clickContinueAndWait(page);
+  await page.getByLabel("Home search notes").fill("I am still comparing options and want to talk through property fit.");
+  await clickContinueAndWait(page);
+  await clickButtonAndWait(page, "Yes, continue");
+
+  const deadline = Date.now() + 75_000;
+  while (Date.now() < deadline) {
+    if (await page.getByText("Do you want single-family, multifamily, or both?").isVisible().catch(() => false)) return;
+    if (await answerIfVisible(page, "Renting")) continue;
+    if (await answerIfVisible(page, "Pre-approved")) continue;
+    if (await page.getByRole("button", { name: "I'll send it later" }).isVisible().catch(() => false)) {
+      await clickButtonAndWait(page, "I'll send it later");
+      continue;
+    }
+    if (await page.getByText("What budget range feels right?").isVisible().catch(() => false)) {
+      await clickContinueAndWait(page);
+      continue;
+    }
+    if (await page.getByText("How many bedrooms?").isVisible().catch(() => false)) {
+      await page.getByRole("button", { name: "3", exact: true }).click({ force: true });
+      await clickContinueAndWait(page);
+      continue;
+    }
+    await page.waitForTimeout(250);
+  }
+
+  throw new Error("Timed out waiting for property category question.");
+}
+
+test("buyer property category can branch through both detail paths", async ({ page }) => {
+  test.setTimeout(120_000);
+  await advanceToPropertyCategory(page);
+
+  await selectChoice(page, "Both");
+  await clickContinueAndWait(page);
+  await expect(page.getByText("Which single-family types should we include?")).toBeVisible();
+  await selectChoice(page, "Detached house");
+  await clickContinueAndWait(page);
+  await expect(page.getByText("Which multifamily types should we include?")).toBeVisible();
+  await selectChoice(page, "Fourplex / quadplex");
+  const continueButton = page.getByRole("button", { name: /^Continue$/ }).first();
+  await expect(continueButton).toBeEnabled();
+  await continueButton.click({ force: true });
+  await expect
+    .poll(
+      async () =>
+        (await page.getByText("Where should we look?").isVisible().catch(() => false)) ||
+        (await page.getByText("See your matches").isVisible().catch(() => false)) ||
+        page.url().includes("/gate"),
+      { timeout: 45_000 }
+    )
+    .toBe(true);
 });
 
 test("structured intake Continue advances without next-question request", async ({ page }) => {

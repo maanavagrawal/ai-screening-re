@@ -109,6 +109,9 @@ export type Preferences = {
   baths?: number;
   bedrooms?: "1" | "2" | "3" | "4" | "5_plus";
   bathrooms?: "1" | "2" | "3" | "4_plus";
+  property_category?: "single_family" | "multi_family" | "both";
+  single_family_property_type?: string[];
+  multifamily_property_type?: string[];
   property_type?: string[];
   neighborhoods?: string[];
   selected_areas?: SelectedArea[];

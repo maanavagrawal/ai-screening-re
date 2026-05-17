@@ -62,14 +62,16 @@ describe("AI fallbacks", () => {
         "current_situation",
         "financing",
         "preapproval_upload",
-        "bathrooms",
-        "property_type",
+        "property_category",
+        "single_family_property_type",
         "first_time_buyer"
       ],
       timeline: { preset: "30_days" },
       financing: "pre_approved",
       bedrooms: "3",
       bathrooms: "2",
+      property_category: "single_family",
+      single_family_property_type: ["house"],
       property_type: ["house"],
       accepted_extraction: {
         beds: 3,
@@ -97,6 +99,225 @@ describe("AI fallbacks", () => {
           financing_hint: 0
         }
       }
+    });
+
+    expect(decision.next_question_id).toBe("done");
+  });
+
+  it("asks property category before property detail questions", () => {
+    const decision = fallbackNextQuestion({
+      answered_question_ids: ["timeline", "free_text", "current_situation", "financing", "budget", "bedrooms"],
+      timeline: { preset: "30_days" },
+      free_text_raw: "Still comparing property options.",
+      current_situation: { status: "renting" },
+      financing: "cash_buyer",
+      budget_min: 500000,
+      budget_max: 900000,
+      bedrooms: "3"
+    });
+
+    expect(decision.next_question_id).toBe("property_category");
+  });
+
+  it("routes single-family buyers only to single-family property types", () => {
+    const singleDetail = fallbackNextQuestion({
+      answered_question_ids: [
+        "timeline",
+        "free_text",
+        "current_situation",
+        "financing",
+        "budget",
+        "bedrooms",
+        "property_category"
+      ],
+      timeline: { preset: "30_days" },
+      free_text_raw: "Looking for a home.",
+      current_situation: { status: "renting" },
+      financing: "cash_buyer",
+      budget_min: 500000,
+      budget_max: 900000,
+      bedrooms: "3",
+      property_category: "single_family"
+    });
+
+    const afterSingleDetail = fallbackNextQuestion({
+      answered_question_ids: [
+        "timeline",
+        "free_text",
+        "current_situation",
+        "financing",
+        "budget",
+        "bedrooms",
+        "property_category",
+        "single_family_property_type"
+      ],
+      timeline: { preset: "30_days" },
+      free_text_raw: "Looking for a home.",
+      current_situation: { status: "renting" },
+      financing: "cash_buyer",
+      budget_min: 500000,
+      budget_max: 900000,
+      bedrooms: "3",
+      property_category: "single_family",
+      single_family_property_type: ["house"],
+      property_type: ["house"]
+    });
+
+    expect(singleDetail.next_question_id).toBe("single_family_property_type");
+    expect(afterSingleDetail.next_question_id).toBe("neighborhoods");
+  });
+
+  it("routes multifamily and both buyers through the right property detail paths", () => {
+    const multifamilyDetail = fallbackNextQuestion({
+      answered_question_ids: [
+        "timeline",
+        "free_text",
+        "current_situation",
+        "financing",
+        "budget",
+        "bedrooms",
+        "property_category"
+      ],
+      timeline: { preset: "30_days" },
+      free_text_raw: "Looking for a small investment property.",
+      current_situation: { status: "renting" },
+      financing: "cash_buyer",
+      budget_min: 500000,
+      budget_max: 900000,
+      bedrooms: "3",
+      property_category: "multi_family"
+    });
+
+    const bothFirstDetail = fallbackNextQuestion({
+      answered_question_ids: [
+        "timeline",
+        "free_text",
+        "current_situation",
+        "financing",
+        "budget",
+        "bedrooms",
+        "property_category"
+      ],
+      timeline: { preset: "30_days" },
+      free_text_raw: "Open to either path.",
+      current_situation: { status: "renting" },
+      financing: "cash_buyer",
+      budget_min: 500000,
+      budget_max: 900000,
+      bedrooms: "3",
+      property_category: "both"
+    });
+
+    const bothSecondDetail = fallbackNextQuestion({
+      answered_question_ids: [
+        "timeline",
+        "free_text",
+        "current_situation",
+        "financing",
+        "budget",
+        "bedrooms",
+        "property_category",
+        "single_family_property_type"
+      ],
+      timeline: { preset: "30_days" },
+      free_text_raw: "Open to either path.",
+      current_situation: { status: "renting" },
+      financing: "cash_buyer",
+      budget_min: 500000,
+      budget_max: 900000,
+      bedrooms: "3",
+      property_category: "both",
+      single_family_property_type: ["townhouse"],
+      property_type: ["townhouse"]
+    });
+
+    expect(multifamilyDetail.next_question_id).toBe("multifamily_property_type");
+    expect(bothFirstDetail.next_question_id).toBe("single_family_property_type");
+    expect(bothSecondDetail.next_question_id).toBe("multifamily_property_type");
+  });
+
+  it("finishes the both-path property branch before applying the hard cap", () => {
+    const decision = fallbackNextQuestion({
+      answered_question_ids: [
+        "timeline",
+        "free_text",
+        "current_situation",
+        "financing",
+        "preapproval_upload",
+        "budget",
+        "bedrooms",
+        "property_category",
+        "single_family_property_type"
+      ],
+      timeline: { preset: "30_days" },
+      free_text_raw: "Open to homes or small multifamily.",
+      current_situation: { status: "renting" },
+      financing: "pre_approved",
+      budget_min: 500000,
+      budget_max: 900000,
+      bedrooms: "3",
+      property_category: "both",
+      single_family_property_type: ["house"],
+      property_type: ["house"]
+    });
+
+    expect(decision.next_question_id).toBe("multifamily_property_type");
+  });
+
+  it("guards an AI done decision when a property branch detail is still pending", () => {
+    const decision = safeNextQuestionDecision(
+      {
+        answered_question_ids: [
+          "timeline",
+          "free_text",
+          "current_situation",
+          "financing",
+          "preapproval_upload",
+          "budget",
+          "bedrooms",
+          "property_category",
+          "single_family_property_type"
+        ],
+        timeline: { preset: "30_days" },
+        free_text_raw: "Open to homes or small multifamily.",
+        current_situation: { status: "renting" },
+        financing: "pre_approved",
+        budget_min: 500000,
+        budget_max: 900000,
+        bedrooms: "3",
+        property_category: "both",
+        single_family_property_type: ["house"],
+        property_type: ["house"]
+      },
+      { next_question_id: "done", reason: "Bad early finish." }
+    );
+
+    expect(decision.next_question_id).toBe("multifamily_property_type");
+  });
+
+  it("does not force property questions onto browsing-track buyers", () => {
+    const decision = fallbackNextQuestion({
+      answered_question_ids: [
+        "timeline",
+        "free_text",
+        "current_situation",
+        "financing",
+        "financing_help",
+        "budget",
+        "bedrooms",
+        "neighborhoods",
+        "must_haves"
+      ],
+      timeline: { preset: "just_exploring" },
+      free_text_raw: "Just browsing options.",
+      current_situation: { status: "renting" },
+      financing: "not_started",
+      financing_help: "no",
+      budget_min: 500000,
+      budget_max: 900000,
+      bedrooms: "3",
+      neighborhoods: ["Mueller"],
+      must_haves: ["yard"]
     });
 
     expect(decision.next_question_id).toBe("done");

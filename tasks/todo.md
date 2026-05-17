@@ -2,6 +2,25 @@
 
 ## Priority 1
 
+- [x] Split buyer property-type intake into single-family and multifamily paths
+  - Goal:
+    - [x] Replace the current broad `What kind of home?` question with an upfront `Single-family`, `Multifamily`, or `Both` choice.
+    - [x] Ask single-family detail options only when the buyer is open to single-family.
+    - [x] Ask multifamily detail options only when the buyer is open to multifamily.
+    - [x] Preserve a combined property preference for downstream matching, lead summaries, and existing dashboard display.
+  - Plan:
+    - [x] Add explicit intake answer fields/question IDs for property category, single-family property types, and multifamily property types.
+    - [x] Update the fallback next-question order so the category answer controls which detail questions are shown.
+    - [x] Add the new intake UI questions using the existing choice-grid patterns.
+    - [x] Update buyer flow tests to prove single-family-only, multifamily-only, and both-path routing.
+    - [x] Run focused and full verification.
+  - Review:
+    - Added a new property category step that asks whether the buyer wants single-family, multifamily, or both.
+    - Single-family buyers now get a detail question for detached house, condo, and townhouse. Multifamily buyers now get a detail question for duplex, triplex, fourplex/quadplex, and 5+ units. Buyers who choose both see both detail screens.
+    - Intake answers now preserve `property_category`, path-specific detail arrays, and a combined `property_type` list so existing summaries and downstream lead preferences still have one combined property preference.
+    - The deterministic fallback router now guards against legacy `property_type` repeats and lets a pending both-path property detail finish before the hard cap ends the intake.
+    - Verification: `npm run typecheck` passed; focused `npm run test -- tests/unit/ai-helpers.test.ts` passed with 10 tests; `./scripts/test.sh` passed with lint, typecheck, and 124 unit tests; focused `DATABASE_URL= npm run e2e -- tests/e2e/buyer-flow.spec.ts --grep "property category"` passed on desktop/mobile; `npm run build` passed; `git diff --check` passed. Full `DATABASE_URL= ./scripts/e2e.sh` was attempted twice but the local Next dev server corrupted `.next` manifests mid-run, matching the repo's documented stale-cache failure mode, so focused e2e plus production build are the reliable browser/build proof for this change.
+
 - [x] Fix setup listing review findings for async card saves and lookup fallback
   - Root cause hypothesis:
     - [x] Setup listing async callbacks still patch by array index even though listing cards can be removed/reordered by deletion.

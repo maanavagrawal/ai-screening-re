@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ChoiceGrid, ContinueButton, QuestionFrame } from "@/components/intake/primitives";
+import { PROPERTY_CATEGORY_OPTIONS } from "@/lib/intake/property-preferences";
 import type { SelectedArea } from "@/lib/types";
 
 type LocationSuggestion = SelectedArea & { attribution?: "google" | "agent" | "manual" };
@@ -133,7 +134,7 @@ export function MultiSelectQuestion({
   onAnswer
 }: {
   title: string;
-  options: Array<{ label: string; value: string }>;
+  options: ReadonlyArray<{ label: string; value: string }>;
   initial?: string[];
   disabled?: boolean;
   onAnswer: (value: string[]) => void;
@@ -143,6 +144,27 @@ export function MultiSelectQuestion({
     <QuestionFrame title={title}>
       <ChoiceGrid disabled={disabled} multi value={values} onSelect={(next) => setValues(next as string[])} options={options} />
       <ContinueButton disabled={disabled} onClick={() => onAnswer(values)}>{values.length ? "Continue" : "Skip"}</ContinueButton>
+    </QuestionFrame>
+  );
+}
+
+export function PropertyCategoryQuestion({
+  disabled,
+  onAnswer
+}: {
+  disabled?: boolean;
+  onAnswer: (value: string) => void;
+}) {
+  const [value, setValue] = useState("");
+  return (
+    <QuestionFrame title="Do you want single-family, multifamily, or both?">
+      <ChoiceGrid
+        value={value}
+        disabled={disabled}
+        onSelect={(next) => setValue(next as string)}
+        options={PROPERTY_CATEGORY_OPTIONS}
+      />
+      <ContinueButton disabled={disabled || !value} onClick={() => onAnswer(value)} />
     </QuestionFrame>
   );
 }
