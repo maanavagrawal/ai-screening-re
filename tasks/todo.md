@@ -2,6 +2,126 @@
 
 ## Priority 1
 
+- [x] Fix setup listing review findings for async card saves and lookup fallback
+  - Root cause hypothesis:
+    - [x] Setup listing async callbacks still patch by array index even though listing cards can be removed/reordered by deletion.
+    - [x] Provider lookup fallback replaces provider-controlled fields even when the address did not change and no new facts were returned.
+  - Plan:
+    - [x] Patch setup listing cards by stable client key and ignore callbacks for removed cards.
+    - [x] Preserve manual listing fields on same-address manual/no-facts lookup while still clearing fields when the address changes.
+    - [x] Apply the same same-address fallback preservation to the dashboard listing form.
+    - [x] Add focused regression coverage for removed-card async extraction and same-address fallback preservation.
+    - [x] Run focused and full verification.
+  - Review:
+    - Setup listing patches now target stable client keys backed by refs to the latest listing/key arrays. If a slow lookup or text extraction resolves after the card was removed, the callback no-ops instead of writing into another listing index.
+    - Same-address lookup fallback now preserves manually entered price, neighborhood, beds, baths, sqft, and property type when the provider returns no replacement facts. Changing the address still clears those fields, so stale data does not carry to a new property.
+    - Dashboard listing lookup uses the same preservation rule for same-address no-facts responses after manual edits.
+    - Verification: `npm run typecheck` passed; focused `npm run e2e -- tests/e2e/agent-phase2.spec.ts` passed with 10 desktop/mobile tests; `./scripts/test.sh` passed with 40 files and 118 tests; `./scripts/e2e.sh` passed with 18 desktop/mobile tests; `npm run build` passed; `git diff --check` passed; dev server restarted on `http://127.0.0.1:3001`.
+
+- [x] Clear stale listing facts when address changes
+  - Root cause hypothesis:
+    - [x] Setup/dashboard lookup applies new provider enrichment while preserving existing visible fields, so a second address can inherit the first address's beds, baths, sqft, neighborhood, price, and property type.
+  - Plan:
+    - [x] Add a focused helper for clearing address-specific listing details.
+    - [x] Clear address-specific visible fields when an address changes or a new suggestion is selected.
+    - [x] Apply new lookup facts as replacements for provider-controlled fields instead of preserving stale values.
+    - [x] Add regression coverage for changing from one selected address to another.
+    - [x] Run focused and full verification.
+  - Review:
+    - Root cause: setup listing lookups were fixed for successful provider replacements, but typing a new address still left the old visible facts on screen until the next lookup. Failed lookups could also re-save stale fields because the error patch reused the pre-clear listing closure.
+    - Fix: setup now clears price, neighborhood, beds, baths, sqft, property type, and enrichment as soon as the address changes from the synced property, and failed lookups preserve that clear instead of merging old facts back in. Dashboard add-listing lookup now uses the same replace-not-preserve behavior.
+    - Regression: the setup listing Playwright flow now changes from one selected address to another and verifies old fields clear immediately, the second lookup applies new facts, and Continue remains blocked until the new listing has its own price.
+    - Verification: `npm run typecheck` passed; focused setup listing e2e passed on desktop/mobile; `./scripts/test.sh` passed with 40 files and 118 tests; `./scripts/e2e.sh` passed with 18 desktop/mobile tests; `npm run build` passed; `git diff --check` passed. A separate Node REPL live smoke attempt could not launch Chromium in that sandbox (`SIGTRAP`), so browser proof is covered by the escalated Playwright runs.
+
+- [x] Simplify setup listing lookup fallback UI
+  - Design review finding:
+    - [x] The setup listing card shows too many explanatory lines after lookup fallback: address instructions, provider failure copy, an empty facts preview, and text-autofill instructions all compete at once.
+  - Plan:
+    - [x] Remove redundant helper paragraphs from the primary address area.
+    - [x] Replace verbose lookup failure copy with a compact status banner.
+    - [x] Hide the facts preview when lookup returns no structured facts.
+    - [x] Make text autofill feel like a compact optional recovery tool rather than another long section.
+    - [x] Update focused tests and verify the setup flow visually.
+  - Review:
+    - Design review verdict: the card now uses one compact lookup status instead of stacked instructional paragraphs. Raw ATTOM copy and `No structured facts found yet.` no longer appear in the setup listing UI.
+    - Fallback text autofill now appears as a compact bordered recovery panel with a shorter placeholder, not a second explanatory section above the required fields.
+    - ATTOM/property responses that return an address but no useful structured facts now show `Details needed` and open the text helper, rather than implying facts were added.
+    - Verification: `npm run typecheck` passed; focused property/search unit tests passed with 13 tests; focused setup listing e2e passed on desktop/mobile; `./scripts/test.sh` passed with 40 files and 118 tests; `./scripts/e2e.sh` passed with 18 desktop/mobile tests; `npm run build` passed; `git diff --check` passed; in-app browser reload confirmed the old raw/fallback copy is absent on `/setup/listings`.
+
+- [x] Resolve selected address place details before ATTOM lookup
+  - Root cause hypothesis:
+    - [x] Google autocomplete labels can omit ZIP/postal detail even after the user clicks a dropdown address, so ATTOM can return manual/no-facts and the UI shows the confusing summary `No structured facts found yet.`
+  - Plan:
+    - [x] Pass selected Google `placeId` through listing property lookup.
+    - [x] Fetch Google Place Details server-side to build a cleaner street/city/state/ZIP address before calling ATTOM.
+    - [x] Replace empty manual lookup summary copy with an actionable manual-entry message.
+    - [x] Add regression coverage for placeId enrichment and no-facts copy.
+    - [x] Run focused and project verification.
+  - Review:
+    - Root cause: the selected Google autocomplete label was not always a complete postal address. For addresses such as `1233 Laguna Street, San Francisco, CA`, the lookup could reach ATTOM without a ZIP, fall back to a manual/no-facts result, and render the confusing `No structured facts found yet.` summary.
+    - Fix: setup and dashboard listing selection now pass the Google `placeId` into `/api/listing-property-search`. The server uses Google Place Details with `formattedAddress,addressComponents` to build a street/city/state/ZIP address before calling ATTOM. If Place Details is temporarily unavailable, the lookup still falls back to the cleaned visible address.
+    - Empty manual lookup summaries now say to fill details manually or use text autofill instead of `No structured facts found yet.`
+    - Verification: focused property/search unit tests passed with 13 tests; `npm run typecheck` passed; focused setup listing e2e passed on desktop/mobile; `./scripts/test.sh` passed with 40 files and 118 tests; `./scripts/e2e.sh` passed with 18 desktop/mobile tests; `npm run build` passed; `git diff --check` passed.
+
+- [x] Make ATTOM lookup failures actionable after address selection
+  - Root cause hypothesis:
+    - [x] Selected Google address labels can still be rejected by ATTOM as malformed or too broad, and the UI currently exposes the raw upstream `ATTOM lookup failed with 400` message.
+  - Plan:
+    - [x] Trace the selected-address request shape against ATTOM's documented `address1`/`address2` format.
+    - [x] Normalize selected address labels before sending them to ATTOM and treat request-shape failures as manual fallback results with clear copy.
+    - [x] Add regression coverage for ATTOM 400/manual fallback behavior.
+    - [x] Verify focused tests and the setup listing flow.
+  - Review:
+    - Root cause: setup listing selections passed Google labels directly into ATTOM. Labels can include country text or full state names, and manual/no-result fallback suggestions made typed partial addresses look selectable. ATTOM then rejected some requests with `400`, which the UI displayed raw.
+    - Fix: listing address suggestions no longer invent a manual dropdown option when Google has no predictions. ATTOM lookup now strips trailing country text, normalizes full US state names to abbreviations, skips clearly incomplete addresses before calling ATTOM, and treats ATTOM `400` as a manual fallback with actionable copy.
+    - Setup UI now opens `Autofill from text` when the property lookup result is manual, including incomplete-address and ATTOM bad-request cases.
+    - Verification: focused property/search unit tests passed with 11 tests; `npm run typecheck` passed; focused setup listing e2e passed on desktop/mobile; `./scripts/test.sh` passed with 40 files and 116 tests; `./scripts/e2e.sh` passed with 18 desktop/mobile tests; `npm run build` passed after network escalation for Next font fetches; `git diff --check` passed; live browser smoke on `/setup/listings` showed the new incomplete-address message and text fallback, then the temporary listing card was removed.
+
+- [x] Replace setup Market presets with city autocomplete
+  - Root cause:
+    - [x] `/setup/basics` still uses a hard-coded `cityOptions` datalist with six cities, even though setup neighborhoods and buyer intake already use provider-backed location suggestions.
+  - Plan:
+    - [x] Replace the Market datalist with a combobox that queries setup location suggestions while typing.
+    - [x] Scope basics Market suggestions to Google city/locality results instead of neighborhoods.
+    - [x] Save the selected provider result as the agent market and keep typed custom values usable.
+    - [x] Add regression coverage for typing a city and selecting a dropdown result.
+  - Review:
+    - `/setup/basics` no longer uses the six-city hard-coded datalist. The Market field now opens a provider-backed combobox as the agent types.
+    - `/api/setup/location-suggestions` accepts `scope: "market"` and passes `includedPrimaryTypes: ["locality"]` to the location search helper, so the basics step asks Google Places for city/locality results rather than neighborhood suggestions.
+    - Selecting a result saves the full market label, such as `San Ramon, California, USA`; typed custom values still commit on blur/Continue.
+    - Verification: `npm run typecheck` passed; focused setup location unit test passed with 3 tests; focused `npm run e2e -- tests/e2e/agent-phase2.spec.ts --grep "setup basics market"` passed on desktop/mobile; `./scripts/test.sh` passed with lint, typecheck, and 112 unit tests; `./scripts/e2e.sh` passed with 18 desktop/mobile Playwright tests; `npm run build` passed; `git diff --check` passed.
+
+- [x] Fix setup listing review findings
+  - Root cause:
+    - [x] Setup removed the media-link importer but the remaining `Video URL` field only marks `.mp4` URLs, so Instagram/TikTok URLs entered during setup persist with `videoSource: null` and buyer cards do not show the external watch CTA.
+    - [x] Unlimited listing cards use array indexes as React keys even though cards can now be removed, so `ListingEditor` local state can be reused for the wrong listing after deleting an earlier card.
+  - Plan:
+    - [x] Infer `instagram`, `tiktok`, and `mp4` video source from setup `Video URL` changes.
+    - [x] Give setup listing editors stable client-side keys across add/remove operations.
+    - [x] Add regression coverage for setup social video source persistence and removing an earlier card without stale editor state.
+    - [x] Run focused setup e2e plus project verification.
+  - Review:
+    - Setup `Video URL` now derives `videoSource` for Instagram, TikTok, and mp4 links, so buyer cards can show the right external/social video CTA for setup-created listings.
+    - Setup listing cards now keep a stable client-side key array across add/remove operations, preventing `ListingEditor` local state from moving to another listing after deleting an earlier card.
+    - Regression coverage now verifies Instagram setup URLs save with `videoSource: instagram` and that removing listing 1 preserves listing 2's text-autofill state after it becomes listing 1.
+    - Verification: `npm run typecheck` passed; focused `npm run e2e -- tests/e2e/agent-phase2.spec.ts --grep "setup listing entry"` passed on desktop/mobile; `./scripts/test.sh` passed with lint, typecheck, and 111 unit tests; `./scripts/e2e.sh` passed with 16 desktop/mobile Playwright tests after rerunning one transient mobile navigation abort; `npm run build` passed; `git diff --check` passed.
+
+- [x] Redesign setup listings as unlimited address-first cards
+  - Goal: agents should start from an empty listings page, add as many listings as they need, choose an address first, and only see the long listing details/fallback helpers when they are useful.
+  - Plan:
+    - [x] Replace the fixed three blank listing cards with an empty state and Add listing action.
+    - [x] Add unlimited collapsible listing cards with remove, expand, collapsed summary, and one-complete-listing Continue behavior.
+    - [x] Remove the optional media-link importer and keep media as the editable Video URL field.
+    - [x] Show text autofill only after lookup failure or when the agent chooses `Use text instead`.
+    - [x] Change setup publish validation to require at least one complete listing and filter incomplete draft cards before onboarding.
+    - [x] Add regression coverage and verify desktop/mobile behavior.
+  - Review:
+    - Setup listing entry now opens with a focused empty state instead of three full blank cards. New cards start with address lookup, successful lookups reveal editable details, and failed lookups reveal the text autofill fallback.
+    - Complete listing means address, price, beds, and baths. Agent notes, video URL, sqft, neighborhood, property type, features, deal-breaker flags, and pocket status remain optional.
+    - Deleted the now-unused setup URL extraction route/helper because media links are no longer a separate setup import path.
+    - Added an intake readiness marker while verifying the full suite, preventing buyer choice clicks from being swallowed before client/session hydration.
+    - Verification: focused setup-complete unit tests passed; focused setup listing Playwright regression passed on desktop/mobile; focused buyer and dashboard reruns passed after readiness/wait fixes; `./scripts/test.sh` passed with lint, typecheck, and 111 unit tests; `./scripts/e2e.sh` passed with 16 desktop/mobile Playwright tests; `npm run build` passed; `git diff --check` passed; live desktop/mobile smoke checks passed against `http://127.0.0.1:3001`.
+
 - [x] Design-review agent listing entry UI
   - Goal: the agent listing-entry experience should feel obvious, clean, and fast for someone adding properties during setup or later from the dashboard.
   - Plan:
@@ -656,7 +776,7 @@
   - Goal: build the agent self-serve setup wizard and inbox-style dashboard without adding CRM/pipeline/billing/custom-domain scope.
   - Acceptance:
     - Magic-link signup and setup draft resume flow work locally with dev fallback and Railway Postgres/Resend production paths.
-    - Wizard screens collect basics, voice, 3 listings, neighborhoods, verified phone, link, and first-lead simulation.
+    - Wizard screens collect basics, voice, at least one listing, neighborhoods, verified phone, link, and first-lead simulation.
     - Setup completion calls `onboardAgent()`; seed and wizard-created agents share one primitive.
     - `agents.voice_notes` feeds Phase 1 agent brief, match-reason, and what's-new prompts.
     - Dashboard is auth-gated and scoped by `agents.user_id`; no cross-agent data is visible.

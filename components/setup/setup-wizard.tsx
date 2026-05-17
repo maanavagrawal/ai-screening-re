@@ -8,6 +8,8 @@ import QRCode from "qrcode";
 import {
   ArrowLeft,
   ArrowRight,
+  ChevronDown,
+  ChevronUp,
   Check,
   Link as LinkIcon,
   Mic,
@@ -15,6 +17,7 @@ import {
   Plus,
   Search,
   Tag,
+  Trash2,
   Wand2
 } from "lucide-react";
 import { Button, LinkButton } from "@/components/ui/button";
@@ -28,14 +31,11 @@ import type { AddressSuggestion, PropertyLookupResult } from "@/lib/property/loo
 const steps = ["welcome", "basics", "voice", "listings", "neighborhoods", "phone", "link", "simulation"] as const;
 type Step = (typeof steps)[number];
 
-const cityOptions = ["Austin, TX", "Seattle, WA", "Denver, CO", "Los Angeles, CA", "Miami, FL", "Chicago, IL"];
-
 type WizardListing = Partial<ListingPayload> & {
-  sourceUrl?: string;
   sourceText?: string;
-  extractMessage?: string;
   extractDetailsMessage?: string;
   propertyLookupMessage?: string;
+  propertyLookupFailed?: boolean;
 };
 
 export function SetupWizard({
@@ -46,13 +46,14 @@ export function SetupWizard({
   initialDraft: Partial<AgentSetupDraftData>;
 }) {
   const router = useRouter();
+  const initialListings = compactWizardListings(initialDraft.listings as WizardListing[] | undefined);
   const [draft, setDraft] = useState<Partial<AgentSetupDraftData>>({
     accentColor: "#C97B5C",
-    listings: [{}, {}, {}] as ListingPayload[],
-    ...initialDraft
+    ...initialDraft,
+    listings: initialListings as ListingPayload[]
   });
   const [listings, setListings] = useState<WizardListing[]>(
-    (initialDraft.listings?.length ? initialDraft.listings : [{}, {}, {}]) as WizardListing[]
+    initialListings
   );
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -198,7 +199,7 @@ function Welcome({ onNext }: { onNext: () => void }) {
         <p className="mt-5 text-warm-muted">Each step creates something visible: your page, your voice, your listings, then your first lead preview.</p>
       </div>
       <div className="grid gap-3 text-sm">
-        {["Tell us about your market", "Add your first 3 listings", "Connect your phone for instant lead alerts", "Get your shareable link"].map((item) => (
+        {["Tell us about your market", "Add your listings", "Connect your phone for instant lead alerts", "Get your shareable link"].map((item) => (
           <p key={item} className="flex items-center gap-3">
             <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[var(--agent-accent-soft)] text-[var(--agent-accent)]">
               <Check size={14} />
@@ -222,6 +223,10 @@ function Basics({
   onNext: () => void;
 }) {
   const [uploading, setUploading] = useState(false);
+  const [marketInput, setMarketInput] = useState(draft.market ?? "");
+  const [marketSuggestions, setMarketSuggestions] = useState<SelectedArea[]>([]);
+  const [marketSuggestionsOpen, setMarketSuggestionsOpen] = useState(false);
+  const [marketSuggestionsBusy, setMarketSuggestionsBusy] = useState(false);
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     accept: { "image/*": [] },
     multiple: false,
@@ -237,22 +242,98 @@ function Basics({
     }
   });
 
-  const ready = Boolean(draft.name && draft.market && draft.headshotUrl);
+  useEffect(() => {
+    setMarketInput(draft.market ?? "");
+  }, [draft.market]);
+
+  useEffect(() => {
+    if (!marketSuggestionsOpen) return;
+    const query = marketInput.trim();
+    if (query.length < 2) {
+      setMarketSuggestions([]);
+      setMarketSuggestionsBusy(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    const timeout = window.setTimeout(async () => {
+      setMarketSuggestionsBusy(true);
+      try {
+        const response = await fetch("/api/setup/location-suggestions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ query, scope: "market" }),
+          signal: controller.signal
+        });
+        const json = (await response.json().catch(() => null)) as { suggestions?: SelectedArea[] } | null;
+        if (!controller.signal.aborted) {
+          setMarketSuggestions(response.ok ? (json?.suggestions ?? []) : []);
+        }
+      } catch {
+        if (!controller.signal.aborted) setMarketSuggestions([]);
+      } finally {
+        if (!controller.signal.aborted) setMarketSuggestionsBusy(false);
+      }
+    }, 180);
+
+    return () => {
+      controller.abort();
+      window.clearTimeout(timeout);
+    };
+  }, [marketInput, marketSuggestionsOpen]);
+
+  async function commitMarket(value: string) {
+    const clean = value.trim();
+    if (clean === (draft.market ?? "")) return;
+    await savePatch({ market: clean });
+  }
+
+  async function selectMarket(suggestion: SelectedArea) {
+    const nextMarket = marketLabelFromSuggestion(suggestion);
+    setMarketInput(nextMarket);
+    setMarketSuggestions([]);
+    setMarketSuggestionsOpen(false);
+    await commitMarket(nextMarket);
+  }
+
+  async function continueBasics() {
+    await commitMarket(marketInput);
+    onNext();
+  }
+
+  const ready = Boolean(draft.name && marketInput.trim() && draft.headshotUrl);
   return (
     <div className="space-y-6">
       <h1 className="font-serif text-5xl leading-none">Basics first.</h1>
       <Field label="Full name" value={draft.name ?? ""} onChange={(name) => savePatch({ name, slug: draft.slug || slugFromName(name) })} />
-      <label className="block">
+      <div className="block">
         <span className="text-sm font-semibold">Market</span>
-        <input
-          list="cities"
-          className="mt-2 h-14 w-full rounded-2xl border-warm-border bg-white px-4"
-          value={draft.market ?? ""}
-          onChange={(event) => savePatch({ market: event.target.value })}
-          placeholder="Austin, TX"
-        />
-        <datalist id="cities">{cityOptions.map((city) => <option key={city} value={city} />)}</datalist>
-      </label>
+        <div className="mt-2">
+          <SetupLocationCombobox
+            value={marketInput}
+            suggestions={marketSuggestions}
+            suggestionsOpen={marketSuggestionsOpen}
+            suggestionsBusy={marketSuggestionsBusy}
+            ariaLabel="Market"
+            placeholder="Start typing your city"
+            loadingLabel="Finding cities..."
+            onChange={(value) => {
+              setMarketInput(value);
+              setMarketSuggestionsOpen(value.trim().length >= 2);
+            }}
+            onFocus={() => setMarketSuggestionsOpen(marketInput.trim().length >= 2)}
+            onBlur={() => {
+              window.setTimeout(() => setMarketSuggestionsOpen(false), 120);
+              void commitMarket(marketInput);
+            }}
+            onEnterFirstSuggestion={() => {
+              if (marketSuggestions[0]) void selectMarket(marketSuggestions[0]);
+              else void commitMarket(marketInput);
+            }}
+            onSelect={(suggestion) => void selectMarket(suggestion)}
+          />
+        </div>
+      </div>
       <div
         {...getRootProps()}
         className={cn(
@@ -264,7 +345,7 @@ function Basics({
         <p className="font-semibold">{uploading ? "Cropping..." : draft.headshotUrl ? "Headshot ready" : "Drop a square headshot"}</p>
         <p className="mt-2 text-sm text-warm-muted">Minimum 400x400. We&apos;ll crop it to a clean 800px JPEG.</p>
       </div>
-      <Button className="w-full gap-2" disabled={!ready} onClick={onNext}>Continue <ArrowRight size={18} /></Button>
+      <Button className="w-full gap-2" disabled={!ready} onClick={() => void continueBasics()}>Continue <ArrowRight size={18} /></Button>
     </div>
   );
 }
@@ -355,33 +436,74 @@ function Listings({
   setBusy: (value: string | null) => void;
   onNext: () => void;
 }) {
-  const complete = listings.filter((listing) => listing.address && listing.price && listing.beds != null && listing.baths != null && listing.agent_note).length >= 3;
-  async function patch(index: number, patchValue: WizardListing) {
-    const next = listings.map((listing, itemIndex) => (itemIndex === index ? { ...listing, ...patchValue } : listing));
+  const [listingKeys, setListingKeys] = useState<string[]>(() => listings.map(createListingClientKey));
+  const [expandedIndexes, setExpandedIndexes] = useState<Set<number>>(
+    () => new Set(listings.map((listing, index) => (listingComplete(listing) ? null : index)).filter((index): index is number => index != null))
+  );
+  const listingsRef = useRef(listings);
+  const listingKeysRef = useRef(listingKeys);
+  const completeCount = listings.filter(listingComplete).length;
+  const complete = completeCount >= 1;
+
+  useEffect(() => {
+    listingsRef.current = listings;
+    setListingKeys((current) => {
+      let next = current;
+      if (current.length > listings.length) next = current.slice(0, listings.length);
+      if (current.length < listings.length) next = [...current, ...Array.from({ length: listings.length - current.length }, createListingClientKey)];
+      listingKeysRef.current = next;
+      return next;
+    });
+  }, [listings]);
+
+  async function patch(clientKey: string, patchValue: WizardListing) {
+    const index = listingKeysRef.current.indexOf(clientKey);
+    if (index === -1) return;
+    const currentListings = listingsRef.current;
+    if (!currentListings[index]) return;
+    const next = currentListings.map((listing, itemIndex) => (itemIndex === index ? { ...listing, ...patchValue } : listing));
+    listingsRef.current = next;
     await saveListings(next);
   }
 
-  async function extract(index: number, url: string) {
-    setBusy(`listing-${index}`);
-    const response = await fetch("/api/setup/extract-listing", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url })
-    });
-    const json = await response.json();
-    setBusy(null);
-    if (response.ok) {
-      await patch(index, {
-        sourceUrl: url,
-        videoUrl: json.listing.videoUrl,
-        videoSource: json.listing.videoSource,
-        extractMessage: json.listing.message
-      });
-    }
+  async function addListing() {
+    const next = [...listingsRef.current, {}];
+    const nextKeys = [...listingKeysRef.current, createListingClientKey()];
+    listingsRef.current = next;
+    listingKeysRef.current = nextKeys;
+    setListingKeys(nextKeys);
+    setExpandedIndexes((current) => new Set([...current, next.length - 1]));
+    await saveListings(next);
   }
 
-  async function extractDetails(index: number, text: string) {
-    setBusy(`listing-details-${index}`);
+  async function removeListing(index: number) {
+    const next = listingsRef.current.filter((_, itemIndex) => itemIndex !== index);
+    const nextKeys = listingKeysRef.current.filter((_, itemIndex) => itemIndex !== index);
+    listingsRef.current = next;
+    listingKeysRef.current = nextKeys;
+    setListingKeys(nextKeys);
+    setExpandedIndexes((current) => {
+      const shifted = new Set<number>();
+      current.forEach((itemIndex) => {
+        if (itemIndex < index) shifted.add(itemIndex);
+        if (itemIndex > index) shifted.add(itemIndex - 1);
+      });
+      return shifted;
+    });
+    await saveListings(next);
+  }
+
+  function toggleListing(index: number) {
+    setExpandedIndexes((current) => {
+      const next = new Set(current);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+  }
+
+  async function extractDetails(clientKey: string, text: string) {
+    setBusy(`listing-details-${clientKey}`);
     const response = await fetch("/api/setup/extract-listing-details", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -408,33 +530,57 @@ function Listings({
       if (details.dealBreakerFlags?.length) nextPatch.dealBreakerFlags = details.dealBreakerFlags;
       if (details.description) nextPatch.description = details.description;
       if (details.agent_note) nextPatch.agent_note = details.agent_note;
-      await patch(index, nextPatch);
+      await patch(clientKey, nextPatch);
     } else {
-      await patch(index, { extractDetailsMessage: json.error ?? "Could not read those details." });
+      await patch(clientKey, { extractDetailsMessage: json.error ?? "Could not read those details." });
     }
   }
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="font-serif text-5xl leading-none">Add 3 recent listings.</h1>
-        <p className="mt-4 text-warm-muted">Start with each address. Media links and captions are optional helpers.</p>
+        <h1 className="font-serif text-5xl leading-none">Add listings.</h1>
+        <p className="mt-4 text-warm-muted">Start with an address. We&apos;ll pull public facts first, then you can edit anything that needs a human read.</p>
       </div>
-      <div className="space-y-4">
-        {listings.slice(0, 3).map((listing, index) => (
-          <ListingEditor
-            key={index}
-            index={index}
-            listing={listing}
-            patch={patch}
-            extract={extract}
-            extractDetails={extractDetails}
-            busy={busy === `listing-${index}`}
-            detailsBusy={busy === `listing-details-${index}`}
-          />
-        ))}
+      {listings.length ? (
+        <div className="space-y-4">
+          {listings.map((listing, index) => (
+            <ListingEditor
+              key={listingKeys[index] ?? `listing-${index}`}
+              clientKey={listingKeys[index] ?? ""}
+              index={index}
+              listing={listing}
+              expanded={expandedIndexes.has(index)}
+              onToggle={() => toggleListing(index)}
+              onRemove={() => void removeListing(index)}
+              patch={patch}
+              extractDetails={extractDetails}
+              detailsBusy={busy === `listing-details-${listingKeys[index]}`}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="rounded-2xl border border-dashed border-warm-border bg-white/70 p-5">
+          <p className="font-serif text-2xl">Start with the first address.</p>
+          <p className="mt-2 text-sm leading-6 text-warm-muted">
+            Add one listing now, or keep adding more as you go. Each card can collapse after the important fields are in.
+          </p>
+          <Button className="mt-4 gap-2" onClick={() => void addListing()}>
+            <Plus size={18} />
+            Add listing
+          </Button>
+        </div>
+      )}
+      {listings.length ? (
+        <Button className="w-full gap-2" variant="secondary" onClick={() => void addListing()}>
+          <Plus size={18} />
+          Add another listing
+        </Button>
+      ) : null}
+      <div className="space-y-2">
+        <Button className="w-full gap-2" disabled={!complete} onClick={onNext}>Continue <ArrowRight size={18} /></Button>
+        {!complete ? <p className="text-center text-sm text-warm-muted">Add at least one complete listing to continue.</p> : null}
       </div>
-      <Button className="w-full gap-2" disabled={!complete} onClick={onNext}>Continue <ArrowRight size={18} /></Button>
     </div>
   );
 }
@@ -560,6 +706,9 @@ function SetupLocationCombobox({
   suggestions,
   suggestionsOpen,
   suggestionsBusy,
+  ariaLabel = "Add neighborhood",
+  placeholder = "Add city or neighborhood",
+  loadingLabel = "Finding areas...",
   onChange,
   onFocus,
   onBlur,
@@ -570,6 +719,9 @@ function SetupLocationCombobox({
   suggestions: SelectedArea[];
   suggestionsOpen: boolean;
   suggestionsBusy: boolean;
+  ariaLabel?: string;
+  placeholder?: string;
+  loadingLabel?: string;
   onChange: (value: string) => void;
   onFocus: () => void;
   onBlur: () => void;
@@ -597,12 +749,12 @@ function SetupLocationCombobox({
           }
         }}
         role="combobox"
-        aria-expanded={showDropdown}
-        aria-controls={listboxId}
-        aria-autocomplete="list"
-        aria-label="Add neighborhood"
-        placeholder="Add city or neighborhood"
-      />
+          aria-expanded={showDropdown}
+          aria-controls={listboxId}
+          aria-autocomplete="list"
+          aria-label={ariaLabel}
+          placeholder={placeholder}
+        />
       {showDropdown ? (
         <div
           id={listboxId}
@@ -610,7 +762,7 @@ function SetupLocationCombobox({
           role="listbox"
         >
           {suggestionsBusy && !suggestions.length ? (
-            <p className="px-4 py-3 text-warm-muted">Finding areas...</p>
+            <p className="px-4 py-3 text-warm-muted">{loadingLabel}</p>
           ) : null}
           {suggestions.map((suggestion) => (
             <button
@@ -643,6 +795,11 @@ function setupLocationKey(area: SelectedArea) {
 
 function normalizeLocationLabel(value: string) {
   return value.trim().toLowerCase();
+}
+
+function marketLabelFromSuggestion(suggestion: SelectedArea) {
+  if (!suggestion.parentLabel || suggestion.label.includes(suggestion.parentLabel)) return suggestion.label;
+  return `${suggestion.label}, ${suggestion.parentLabel}`;
 }
 
 function PhoneStep(props: {
@@ -838,17 +995,19 @@ function Simulation({ draft, busy, setBusy }: { draft: Partial<AgentSetupDraftDa
 }
 
 function ListingEditor(props: {
+  clientKey: string;
   index: number;
   listing: WizardListing;
-  patch: (index: number, patch: WizardListing) => Promise<void>;
-  extract: (index: number, url: string) => Promise<void>;
-  extractDetails: (index: number, text: string) => Promise<void>;
-  busy: boolean;
+  expanded: boolean;
+  onToggle: () => void;
+  onRemove: () => void;
+  patch: (clientKey: string, patch: WizardListing) => Promise<void>;
+  extractDetails: (clientKey: string, text: string) => Promise<void>;
   detailsBusy: boolean;
 }) {
-  const [url, setUrl] = useState(props.listing.sourceUrl ?? "");
   const [sourceText, setSourceText] = useState(props.listing.sourceText ?? "");
   const [addressInput, setAddressInput] = useState(props.listing.address ?? "");
+  const contentId = useId();
   const lastSyncedAddress = useRef(props.listing.address ?? "");
   const [propertyBusy, setPropertyBusy] = useState(false);
   const [propertyResult, setPropertyResult] = useState<PropertyLookupResult | null>(null);
@@ -856,7 +1015,12 @@ function ListingEditor(props: {
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   const [suggestionsBusy, setSuggestionsBusy] = useState(false);
   const [detailsUnlocked, setDetailsUnlocked] = useState(() => listingDetailsUnlocked(props.listing));
+  const [textFallbackOpen, setTextFallbackOpen] = useState(
+    () => Boolean(props.listing.sourceText || props.listing.extractDetailsMessage || props.listing.propertyLookupFailed)
+  );
   const skipNextAddressBlurCommit = useRef(false);
+  const selectedAddressPlaceId = useRef<string | null>(null);
+  const clearedDuringAddressEdit = useRef(false);
 
   useEffect(() => {
     const nextAddress = props.listing.address ?? "";
@@ -868,6 +1032,10 @@ function ListingEditor(props: {
   useEffect(() => {
     if (listingDetailsUnlocked(props.listing)) setDetailsUnlocked(true);
   }, [props.listing]);
+
+  useEffect(() => {
+    if (props.listing.propertyLookupFailed) setTextFallbackOpen(true);
+  }, [props.listing.propertyLookupFailed]);
 
   useEffect(() => {
     if (!suggestionsOpen) return;
@@ -905,63 +1073,104 @@ function ListingEditor(props: {
     };
   }, [addressInput, suggestionsOpen]);
 
-  async function lookupAndApplyProperty(address = addressInput) {
+  async function lookupAndApplyProperty(address = addressInput, placeId = selectedAddressPlaceId.current) {
     const cleanAddress = address.trim();
     if (!cleanAddress) return;
     setDetailsUnlocked(true);
     setPropertyBusy(true);
     setPropertyResult(null);
-    await commitAddress(cleanAddress);
+    const addressChanged = await commitAddress(cleanAddress);
     try {
       const response = await fetch("/api/listing-property-search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ address: cleanAddress })
+        body: JSON.stringify({ address: cleanAddress, placeId: placeId || undefined })
       });
       const json = (await response.json().catch(() => null)) as { result?: PropertyLookupResult; error?: string } | null;
       if (response.ok && json?.result) {
         setPropertyResult(json.result);
-        await applyPropertyFacts(json.result, cleanAddress);
+        if (json.result.propertyDataSource === "manual" || !hasStructuredPropertyFacts(json.result)) setTextFallbackOpen(true);
+        await applyPropertyFacts(json.result, cleanAddress, addressChanged);
       } else {
-        await props.patch(props.index, { propertyLookupMessage: json?.error ?? "Could not look up property facts." });
+        setTextFallbackOpen(true);
+        await props.patch(props.clientKey, {
+          ...(addressChanged ? clearedAddressSpecificListingFields() : {}),
+          ...(addressChanged ? clearedListingEnrichment() : {}),
+          address: cleanAddress,
+          propertyLookupMessage: json?.error ?? "Could not look up property facts.",
+          propertyLookupFailed: true
+        });
       }
     } catch {
-      await props.patch(props.index, { propertyLookupMessage: "Could not look up property facts." });
+      setTextFallbackOpen(true);
+      await props.patch(props.clientKey, {
+        ...(addressChanged ? clearedAddressSpecificListingFields() : {}),
+        ...(addressChanged ? clearedListingEnrichment() : {}),
+        address: cleanAddress,
+        propertyLookupMessage: "Could not look up property facts.",
+        propertyLookupFailed: true
+      });
     } finally {
       setPropertyBusy(false);
     }
   }
 
   function updateAddress(address: string) {
+    selectedAddressPlaceId.current = null;
     setAddressInput(address);
     setPropertyResult(null);
     setAddressSuggestions([]);
     setSuggestionsOpen(address.trim().length >= 3);
     setDetailsUnlocked((current) => current && listingDetailsUnlocked(props.listing));
+    if (shouldClearAddressSpecificListingFields(address, lastSyncedAddress.current, props.listing) && !clearedDuringAddressEdit.current) {
+      clearedDuringAddressEdit.current = true;
+      void props.patch(props.clientKey, {
+        address,
+        ...clearedAddressSpecificListingFields(),
+        ...clearedListingEnrichment(),
+        propertyLookupMessage: undefined,
+        propertyLookupFailed: false
+      });
+    }
   }
 
   async function commitAddress(address: string) {
     const cleanAddress = address.trim();
-    if (cleanAddress === lastSyncedAddress.current) return;
+    if (cleanAddress === lastSyncedAddress.current) {
+      clearedDuringAddressEdit.current = false;
+      return false;
+    }
     lastSyncedAddress.current = cleanAddress;
-    await props.patch(props.index, {
+    clearedDuringAddressEdit.current = false;
+    await props.patch(props.clientKey, {
       address: cleanAddress,
+      ...clearedAddressSpecificListingFields(),
       ...clearedListingEnrichment(),
-      propertyLookupMessage: undefined
+      propertyLookupMessage: undefined,
+      propertyLookupFailed: false
     });
+    return true;
   }
 
   async function selectAddressSuggestion(suggestion: AddressSuggestion) {
+    selectedAddressPlaceId.current = suggestion.placeId ?? null;
     setAddressInput(suggestion.label);
     setSuggestionsOpen(false);
     setAddressSuggestions([]);
     setDetailsUnlocked(true);
-    await lookupAndApplyProperty(suggestion.label);
+    await lookupAndApplyProperty(suggestion.label, suggestion.placeId ?? null);
   }
 
-  async function applyPropertyFacts(result: PropertyLookupResult, fallbackAddress = addressInput) {
+  async function applyPropertyFacts(result: PropertyLookupResult, fallbackAddress = addressInput, addressChanged = false) {
     const facts = result.propertyFacts ?? {};
-    await props.patch(props.index, {
+    const lookupFailed = result.propertyDataSource === "manual" || !hasStructuredPropertyFacts(result);
+    const existingListing: WizardListing = addressChanged ? {} : props.listing;
+    const neighborhood =
+      result.normalizedAddress?.city && (!lookupFailed || addressChanged)
+        ? result.normalizedAddress.city
+        : existingListing.neighborhood;
+    await props.patch(props.clientKey, {
+      ...(addressChanged ? clearedAddressSpecificListingFields() : {}),
       attomId: result.attomId ?? null,
       propertyDataSource: result.propertyDataSource,
       propertyEnrichedAt: result.propertyEnrichedAt,
@@ -970,18 +1179,19 @@ function ListingEditor(props: {
       propertyFacts: result.propertyFacts,
       propertyOverrideFields: [],
       propertyLookupMessage: result.message,
+      propertyLookupFailed: lookupFailed,
       address: result.normalizedAddress?.label ?? fallbackAddress,
-      neighborhood: props.listing.neighborhood || result.normalizedAddress?.city || undefined,
-      beds: props.listing.beds ?? facts.beds ?? undefined,
-      baths: props.listing.baths ?? facts.baths ?? undefined,
-      sqft: props.listing.sqft ?? facts.sqft ?? null,
-      property_type: props.listing.property_type || propertyTypeValue(facts.propertyType) || undefined
+      neighborhood: neighborhood || undefined,
+      beds: facts.beds ?? existingListing.beds ?? undefined,
+      baths: facts.baths ?? existingListing.baths ?? undefined,
+      sqft: facts.sqft ?? existingListing.sqft ?? null,
+      property_type: propertyTypeValue(facts.propertyType) || existingListing.property_type || undefined
     });
   }
 
   async function fillFromText() {
     setDetailsUnlocked(true);
-    await props.extractDetails(props.index, sourceText);
+    await props.extractDetails(props.clientKey, sourceText);
   }
 
   function handleAddressBlur(event: FocusEvent<HTMLInputElement>) {
@@ -998,19 +1208,55 @@ function ListingEditor(props: {
   }
 
   const showDetails = detailsUnlocked || listingDetailsUnlocked(props.listing);
+  const cardStatus = listingComplete(props.listing) ? "Complete" : showDetails ? "Needs details" : "Address first";
+  const showLookupStatus = Boolean(propertyResult || props.listing.propertyLookupMessage);
+  const lookupFactLine = propertyResult
+    ? propertyFactLine(propertyResult)
+    : propertyFactLine({ propertyFacts: props.listing.propertyFacts });
+  const lookupNeedsManual =
+    propertyResult?.propertyDataSource === "manual" ||
+    (showLookupStatus && !lookupFactLine) ||
+    Boolean(props.listing.propertyLookupFailed);
+  const showTextFallback = textFallbackOpen || lookupNeedsManual || Boolean(props.listing.extractDetailsMessage);
 
   return (
     <div className="overflow-hidden rounded-2xl border border-warm-border bg-white">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-warm-border px-4 py-4">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-warm-muted">Listing {props.index + 1}</p>
-          <h2 className="mt-1 font-serif text-2xl">Start with the address</h2>
-        </div>
-        <span className="rounded-full bg-[#FAFAF7] px-3 py-2 text-xs font-semibold text-warm-muted">
-          {showDetails ? "Details ready" : "Address first"}
-        </span>
+      <div className="flex items-start gap-2 border-b border-warm-border px-4 py-4">
+        <button
+          type="button"
+          className="agent-focus flex min-w-0 flex-1 items-start justify-between gap-3 rounded-xl text-left"
+          aria-label={`${props.expanded ? "Collapse" : "Expand"} listing ${props.index + 1}`}
+          aria-expanded={props.expanded}
+          aria-controls={contentId}
+          onClick={props.onToggle}
+        >
+          <span className="min-w-0">
+            <span className="block text-xs font-semibold uppercase tracking-wide text-warm-muted">Listing {props.index + 1}</span>
+            <span className="mt-1 block truncate font-serif text-2xl">{props.listing.address || "Start with the address"}</span>
+            <span className="mt-1 block text-sm text-warm-muted">{listingSummary(props.listing)}</span>
+          </span>
+          <span className="flex shrink-0 items-center gap-2">
+            <span className={cn(
+              "rounded-full px-3 py-2 text-xs font-semibold",
+              listingComplete(props.listing)
+                ? "bg-[var(--agent-accent-soft)] text-[var(--agent-accent)]"
+                : "bg-[#FAFAF7] text-warm-muted"
+            )}>
+              {cardStatus}
+            </span>
+            {props.expanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+          </span>
+        </button>
+        <button
+          type="button"
+          className="agent-focus inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-warm-border bg-white text-warm-muted hover:text-warm-text"
+          aria-label={`Remove listing ${props.index + 1}`}
+          onClick={props.onRemove}
+        >
+          <Trash2 size={17} />
+        </button>
       </div>
-      <div className="space-y-5 p-4">
+      <div id={contentId} hidden={!props.expanded} className="space-y-5 p-4">
         <section aria-label={`Listing ${props.index + 1} property facts`}>
           <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
             <SetupAddressSuggestionInput
@@ -1040,42 +1286,50 @@ function ListingEditor(props: {
               {propertyBusy ? "Looking..." : "Lookup facts"}
             </Button>
           </div>
-          <p className="mt-2 text-sm text-warm-muted">
-            Select an address to pull public facts, then confirm price, beds, baths, square feet, and neighborhood.
-          </p>
-          {props.listing.propertyLookupMessage ? <p className="mt-2 text-sm text-warm-muted">{props.listing.propertyLookupMessage}</p> : null}
-          {propertyResult ? (
-            <div className="mt-3 rounded-xl border border-warm-border bg-[#FAFAF7] p-3 text-sm">
-              <p className="font-semibold">{propertyResult.normalizedAddress?.label ?? addressInput}</p>
-              <p className="mt-1 text-warm-muted">{propertyFactLine(propertyResult)}</p>
+          {showLookupStatus ? (
+            <div
+              className={cn(
+                "mt-3 flex items-start gap-3 rounded-xl border px-3 py-3 text-sm",
+                lookupNeedsManual ? "border-[#E5D8CF] bg-[#FFF9F5]" : "border-warm-border bg-[#FAFAF7]"
+              )}
+            >
+              <span
+                className={cn(
+                  "mt-1 h-2.5 w-2.5 shrink-0 rounded-full",
+                  lookupNeedsManual ? "bg-[#C97B5C]" : "bg-[var(--agent-accent)]"
+                )}
+              />
+              <div className="min-w-0">
+                <p className="font-semibold">{lookupNeedsManual ? "Details needed" : "Property facts added"}</p>
+                <p className="mt-1 text-warm-muted">
+                  {lookupNeedsManual
+                    ? "Enter the basics below, or paste remarks to autofill."
+                    : lookupFactLine || "Review the fields below."}
+                </p>
+              </div>
             </div>
+          ) : null}
+          {!showTextFallback ? (
+            <Button className="mt-3 px-0" variant="ghost" onClick={() => setTextFallbackOpen(true)}>
+              Paste remarks instead
+            </Button>
           ) : null}
         </section>
 
-        <section className="border-t border-warm-border pt-5" aria-label={`Listing ${props.index + 1} optional helpers`}>
-          <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
-            <label className="block">
-              <span className="text-xs font-semibold text-warm-muted">Optional media link</span>
-              <input
-                className="mt-1 h-12 w-full rounded-xl border-warm-border px-3 text-sm"
-                value={url}
-                onChange={(event) => setUrl(event.target.value)}
-                placeholder="Instagram, TikTok, MLS, or mp4 link"
-              />
-            </label>
-            <Button className="self-end" variant="secondary" disabled={!url || props.busy} onClick={() => props.extract(props.index, url)}>Use</Button>
-          </div>
-          {props.listing.extractMessage ? <p className="mt-2 text-sm text-warm-muted">{props.listing.extractMessage}</p> : null}
-          <div className="mt-4">
-            <p className="text-xs font-semibold uppercase tracking-wide text-warm-muted">Autofill from text</p>
+        {showTextFallback ? (
+          <section className="rounded-xl border border-warm-border bg-[#FAFAF7] p-3" aria-label={`Listing ${props.index + 1} autofill from text`}>
+            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-warm-muted">
+              <Wand2 size={14} />
+              <span>Autofill from text</span>
+            </div>
             <textarea
-              className="mt-2 min-h-24 w-full rounded-xl border-warm-border bg-white p-3 text-sm leading-6"
+              className="mt-3 min-h-20 w-full rounded-xl border-warm-border bg-white p-3 text-sm leading-6"
               value={sourceText}
               onChange={(event) => {
                 setSourceText(event.target.value);
-                props.patch(props.index, { sourceText: event.target.value });
+                props.patch(props.clientKey, { sourceText: event.target.value });
               }}
-              placeholder="Paste public remarks, an Instagram caption, flyer copy, or notes. Example: $725k, 3 bed, 2 bath, 1,850 sqft, East Austin, fenced yard..."
+              placeholder="Paste remarks or a caption with price, beds, baths, sqft, neighborhood..."
             />
             <Button
               className="mt-3 w-full"
@@ -1086,46 +1340,44 @@ function ListingEditor(props: {
               {props.detailsBusy ? "Reading..." : "Fill fields from text"}
             </Button>
             {props.listing.extractDetailsMessage ? <p className="mt-2 text-sm text-warm-muted">{props.listing.extractDetailsMessage}</p> : null}
-          </div>
-        </section>
+          </section>
+        ) : null}
 
         {showDetails ? (
           <section className="border-t border-warm-border pt-5" aria-label={`Listing ${props.index + 1} details`}>
             <div className="mb-3 flex items-center justify-between gap-3">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-warm-muted">Confirm listing details</p>
-                <p className="mt-1 text-sm text-warm-muted">Edit anything the lookup or text fill missed.</p>
-              </div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-warm-muted">Confirm listing details</p>
               {props.listing.price ? <p className="shrink-0 text-sm font-semibold text-warm-muted">{formatCurrency(props.listing.price)}</p> : null}
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
-              <SmallInput label="Price" value={props.listing.price ? String(props.listing.price) : ""} onChange={(price) => props.patch(props.index, { price: Number(price.replace(/\D/g, "")) || undefined })} />
-              <SmallInput label="Neighborhood" value={props.listing.neighborhood ?? ""} onChange={(neighborhood) => props.patch(props.index, { neighborhood })} />
-              <SmallInput label="Beds" value={props.listing.beds != null ? String(props.listing.beds) : ""} onChange={(beds) => props.patch(props.index, { beds: Number(beds) || undefined })} />
-              <SmallInput label="Baths" value={props.listing.baths != null ? String(props.listing.baths) : ""} onChange={(baths) => props.patch(props.index, { baths: Number(baths) || undefined })} />
-              <SmallInput label="Sqft" value={props.listing.sqft ? String(props.listing.sqft) : ""} onChange={(sqft) => props.patch(props.index, { sqft: Number(sqft) || null })} />
+              <SmallInput label="Price" value={props.listing.price ? String(props.listing.price) : ""} onChange={(price) => props.patch(props.clientKey, { price: Number(price.replace(/\D/g, "")) || undefined })} />
+              <SmallInput label="Neighborhood" value={props.listing.neighborhood ?? ""} onChange={(neighborhood) => props.patch(props.clientKey, { neighborhood })} />
+              <SmallInput label="Beds" value={props.listing.beds != null ? String(props.listing.beds) : ""} onChange={(beds) => props.patch(props.clientKey, { beds: Number(beds) || undefined })} />
+              <SmallInput label="Baths" value={props.listing.baths != null ? String(props.listing.baths) : ""} onChange={(baths) => props.patch(props.clientKey, { baths: Number(baths) || undefined })} />
+              <SmallInput label="Sqft" value={props.listing.sqft ? String(props.listing.sqft) : ""} onChange={(sqft) => props.patch(props.clientKey, { sqft: Number(sqft) || null })} />
               <SmallInput
                 label="Video URL"
                 value={props.listing.videoUrl ?? ""}
-                onChange={(videoUrl) =>
-                  props.patch(props.index, {
-                    videoUrl,
-                    videoSource: videoUrl.trim() ? (videoUrl.endsWith(".mp4") ? "mp4" : props.listing.videoSource) : null
-                  })
-                }
+                onChange={(videoUrl) => {
+                  const cleanVideoUrl = videoUrl.trim();
+                  void props.patch(props.clientKey, {
+                    videoUrl: cleanVideoUrl || null,
+                    videoSource: inferListingVideoSource(cleanVideoUrl)
+                  });
+                }}
               />
-              <SmallInput label="Property type" value={props.listing.property_type ?? ""} onChange={(property_type) => props.patch(props.index, { property_type })} className="sm:col-span-2" />
+              <SmallInput label="Property type" value={props.listing.property_type ?? ""} onChange={(property_type) => props.patch(props.clientKey, { property_type })} className="sm:col-span-2" />
             </div>
-            <ChipEditor title="Features" options={MUST_HAVES} selected={props.listing.features ?? []} onChange={(features) => props.patch(props.index, { features })} />
-            <ChipEditor title="Deal-breaker flags" options={DEAL_BREAKERS} selected={props.listing.dealBreakerFlags ?? []} onChange={(dealBreakerFlags) => props.patch(props.index, { dealBreakerFlags })} />
+            <ChipEditor title="Features" options={MUST_HAVES} selected={props.listing.features ?? []} onChange={(features) => props.patch(props.clientKey, { features })} />
+            <ChipEditor title="Deal-breaker flags" options={DEAL_BREAKERS} selected={props.listing.dealBreakerFlags ?? []} onChange={(dealBreakerFlags) => props.patch(props.clientKey, { dealBreakerFlags })} />
             <textarea
               className="mt-4 min-h-20 w-full rounded-2xl border-warm-border p-3"
               value={props.listing.agent_note ?? ""}
-              onChange={(event) => props.patch(props.index, { agent_note: event.target.value })}
+              onChange={(event) => props.patch(props.clientKey, { agent_note: event.target.value })}
               placeholder="Your take on this property"
             />
             <label className="mt-3 flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={props.listing.isPocket ?? false} onChange={(event) => props.patch(props.index, { isPocket: event.target.checked })} />
+              <input type="checkbox" checked={props.listing.isPocket ?? false} onChange={(event) => props.patch(props.clientKey, { isPocket: event.target.checked })} />
               Off-market or pocket listing
             </label>
           </section>
@@ -1236,7 +1488,68 @@ function listingDetailsUnlocked(listing: WizardListing) {
   );
 }
 
-function propertyFactLine(result: PropertyLookupResult) {
+function compactWizardListings(listings: WizardListing[] | undefined) {
+  return (listings ?? []).filter((listing) =>
+    Boolean(
+      listing.address ||
+        listing.sourceText ||
+        listing.extractDetailsMessage ||
+        listing.propertyLookupMessage ||
+        listing.propertyLookupFailed ||
+        listingDetailsUnlocked(listing)
+    )
+  );
+}
+
+function createListingClientKey() {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
+  return `listing-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function listingComplete(listing: WizardListing) {
+  return Boolean(listing.address && listing.price && listing.beds != null && listing.baths != null);
+}
+
+function shouldClearAddressSpecificListingFields(nextAddress: string, lastSyncedAddress: string, listing: WizardListing) {
+  const cleanNextAddress = nextAddress.trim();
+  const cleanLastAddress = lastSyncedAddress.trim();
+  if (!cleanLastAddress || cleanNextAddress === cleanLastAddress) return false;
+  return Boolean(
+    listing.price ||
+      listing.neighborhood ||
+      listing.beds != null ||
+      listing.baths != null ||
+      listing.sqft != null ||
+      listing.property_type ||
+      listing.attomId ||
+      listing.normalizedAddress ||
+      listing.propertyFacts ||
+      listing.propertyLookupMessage ||
+      listing.propertyLookupFailed
+  );
+}
+
+function clearedAddressSpecificListingFields(): WizardListing {
+  return {
+    price: undefined,
+    neighborhood: undefined,
+    beds: undefined,
+    baths: undefined,
+    sqft: null,
+    property_type: undefined
+  };
+}
+
+function listingSummary(listing: WizardListing) {
+  const facts = [
+    listing.price ? formatCurrency(listing.price) : null,
+    listing.beds != null && listing.baths != null ? `${listing.beds} bed / ${listing.baths} bath` : null,
+    listing.neighborhood || null
+  ].filter(Boolean);
+  return facts.length ? facts.join(" • ") : "Address first, details next";
+}
+
+function propertyFactLine(result: Pick<PropertyLookupResult, "propertyFacts">) {
   const facts = result.propertyFacts ?? {};
   return [
     facts.beds ? `${facts.beds} beds` : null,
@@ -1246,7 +1559,11 @@ function propertyFactLine(result: PropertyLookupResult) {
     facts.propertyType ?? null
   ]
     .filter(Boolean)
-    .join(" • ") || "No structured facts found yet.";
+    .join(" • ") || null;
+}
+
+function hasStructuredPropertyFacts(result: Pick<PropertyLookupResult, "propertyFacts">) {
+  return Boolean(propertyFactLine(result));
 }
 
 function propertyTypeValue(value?: string | null) {
@@ -1255,6 +1572,15 @@ function propertyTypeValue(value?: string | null) {
   if (clean.includes("town")) return "townhouse";
   if (clean.includes("multi")) return "multi_family";
   if (clean.includes("single") || clean.includes("residential")) return "house";
+  return null;
+}
+
+function inferListingVideoSource(url: string): ListingPayload["videoSource"] {
+  const clean = url.toLowerCase();
+  if (!clean) return null;
+  if (clean.endsWith(".mp4")) return "mp4";
+  if (clean.includes("instagram.com")) return "instagram";
+  if (clean.includes("tiktok.com")) return "tiktok";
   return null;
 }
 

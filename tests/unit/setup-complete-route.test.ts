@@ -49,8 +49,8 @@ describe("/api/setup/complete", () => {
     mocks.onboardAgent.mockResolvedValue({ id: "agent_1", slug: "maya" });
   });
 
-  it("allows publishing with one selected neighborhood", async () => {
-    mocks.getSetupDraft.mockResolvedValue({
+  function completeDraft(listings = [listing("1 Palm Lane")]) {
+    return {
       user_id: "user_123",
       current_step: "link",
       data: {
@@ -61,19 +61,60 @@ describe("/api/setup/complete", () => {
         headshotUrl: "https://example.com/headshot.jpg",
         phone: "+15125550141",
         email: "maya@example.com",
-        listings: [
-          listing("1 Palm Lane"),
-          listing("2 Palm Lane"),
-          listing("3 Palm Lane")
-        ]
+        listings
       }
+    };
+  }
+
+  it("allows publishing with one selected neighborhood and one complete listing", async () => {
+    mocks.getSetupDraft.mockResolvedValue({
+      ...completeDraft()
     });
 
     const response = await POST();
 
     expect(response.status).toBe(200);
     expect(mocks.onboardAgent).toHaveBeenCalledWith(expect.objectContaining({
-      neighborhoods: ["San Ramon"]
+      neighborhoods: ["San Ramon"],
+      listings: [expect.objectContaining({ address: "1 Palm Lane" })]
     }));
+  });
+
+  it("filters incomplete draft listing cards before onboarding", async () => {
+    mocks.getSetupDraft.mockResolvedValue(completeDraft([
+      listing("1 Palm Lane"),
+      { address: "Unfinished Lane", neighborhood: "San Ramon" } as ReturnType<typeof listing>
+    ]));
+
+    const response = await POST();
+
+    expect(response.status).toBe(200);
+    expect(mocks.onboardAgent).toHaveBeenCalledWith(expect.objectContaining({
+      listings: [expect.objectContaining({ address: "1 Palm Lane" })]
+    }));
+  });
+
+  it("rejects publishing without a complete listing", async () => {
+    mocks.getSetupDraft.mockResolvedValue(completeDraft([
+      { address: "Unfinished Lane", price: 750000, neighborhood: "San Ramon" } as ReturnType<typeof listing>
+    ]));
+
+    const response = await POST();
+    const json = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(json.error).toBe("Add at least 1 complete listing before publishing");
+    expect(mocks.onboardAgent).not.toHaveBeenCalled();
+  });
+
+  it("rejects publishing with no listings", async () => {
+    mocks.getSetupDraft.mockResolvedValue(completeDraft([]));
+
+    const response = await POST();
+    const json = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(json.error).toBe("Add at least 1 complete listing before publishing");
+    expect(mocks.onboardAgent).not.toHaveBeenCalled();
   });
 });

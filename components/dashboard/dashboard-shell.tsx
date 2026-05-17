@@ -475,6 +475,20 @@ function emptyListingDraft(): DashboardListingDraft {
   };
 }
 
+function clearedDashboardAddressFields(): Pick<
+  DashboardListingDraft,
+  "price" | "beds" | "baths" | "sqft" | "neighborhood" | "property_type"
+> {
+  return {
+    price: "",
+    beds: "",
+    baths: "",
+    sqft: "",
+    neighborhood: "",
+    property_type: ""
+  };
+}
+
 function ListingsSection({ listings, setListings }: { listings: Listing[]; setListings: (items: Listing[]) => void }) {
   const [draft, setDraft] = useState<DashboardListingDraft>(() => emptyListingDraft());
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -676,6 +690,7 @@ function ListingForm({
   const [addressSuggestions, setAddressSuggestions] = useState<AddressSuggestion[]>([]);
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   const [suggestionsBusy, setSuggestionsBusy] = useState(false);
+  const selectedAddressPlaceId = useRef<string | null>(null);
 
   useEffect(() => {
     if (draft.address.trim()) return;
@@ -721,7 +736,7 @@ function ListingForm({
     };
   }, [draft.address, suggestionsOpen]);
 
-  async function lookupAndApply(address: string) {
+  async function lookupAndApply(address: string, placeId = selectedAddressPlaceId.current) {
     const cleanAddress = address.trim();
     if (!cleanAddress) return;
     setLookupBusy(true);
@@ -730,7 +745,7 @@ function ListingForm({
       const response = await fetch("/api/listing-property-search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ address: cleanAddress })
+        body: JSON.stringify({ address: cleanAddress, placeId: placeId || undefined })
       });
       const json = (await response.json().catch(() => null)) as { result?: PropertyLookupResult; error?: string } | null;
       if (response.ok && json?.result) {
@@ -748,7 +763,13 @@ function ListingForm({
   }
 
   function updateAddress(address: string) {
-    setDraft((current) => ({ ...current, address, enrichment: clearedListingEnrichment() }));
+    selectedAddressPlaceId.current = null;
+    setDraft((current) => ({
+      ...current,
+      address,
+      ...clearedDashboardAddressFields(),
+      enrichment: clearedListingEnrichment()
+    }));
     setLookupResult(null);
     setLookupMessage("");
     setAddressSuggestions([]);
@@ -756,18 +777,28 @@ function ListingForm({
   }
 
   function selectAddressSuggestion(suggestion: AddressSuggestion) {
+    selectedAddressPlaceId.current = suggestion.placeId ?? null;
     setSuggestionsOpen(false);
     setAddressSuggestions([]);
-    setDraft((current) => ({ ...current, address: suggestion.label, enrichment: clearedListingEnrichment() }));
-    void lookupAndApply(suggestion.label);
+    setDraft((current) => ({
+      ...current,
+      address: suggestion.label,
+      ...clearedDashboardAddressFields(),
+      enrichment: clearedListingEnrichment()
+    }));
+    void lookupAndApply(suggestion.label, suggestion.placeId ?? null);
   }
 
   function applyLookup(result: PropertyLookupResult) {
     const facts = result.propertyFacts ?? {};
+    const hasProviderFacts = Boolean(facts.beds || facts.baths || facts.sqft || facts.propertyType);
     setDraft((current) => ({
       ...current,
       address: result.normalizedAddress?.label ?? current.address,
-      neighborhood: current.neighborhood || result.normalizedAddress?.city || "",
+      neighborhood:
+        result.normalizedAddress?.city && (hasProviderFacts || !current.neighborhood)
+          ? result.normalizedAddress.city
+          : current.neighborhood,
       beds: facts.beds ? String(facts.beds) : current.beds,
       baths: facts.baths ? String(facts.baths) : current.baths,
       sqft: facts.sqft ? String(facts.sqft) : current.sqft,
@@ -1078,7 +1109,7 @@ function propertyFactLine(result: PropertyLookupResult) {
     facts.propertyType ?? null
   ]
     .filter(Boolean)
-    .join(" • ") || "No structured facts found yet.";
+    .join(" • ") || "Fill the listing details manually, or paste remarks if the lookup missed facts.";
 }
 
 function propertyTypeValue(value?: string | null) {

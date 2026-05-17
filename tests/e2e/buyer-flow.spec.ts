@@ -18,6 +18,10 @@ async function currentHeading(page: Page) {
   return (await page.locator("main h1").first().textContent().catch(() => ""))?.trim() ?? "";
 }
 
+async function waitForIntakeReady(page: Page) {
+  await expect(page.getByTestId("intake-ready")).toHaveText("ready", { timeout: 30_000 });
+}
+
 async function waitForIntakeStepToChange(page: Page, previousHeading: string) {
   await expect
     .poll(
@@ -37,6 +41,7 @@ async function clickButtonAndWait(page: Page, name: string) {
 }
 
 async function selectChoice(page: Page, name: string) {
+  await waitForIntakeReady(page);
   const target = page.getByRole("button", { name, exact: true }).first();
   await expect(target).toBeVisible();
   for (let attempt = 0; attempt < 3; attempt += 1) {

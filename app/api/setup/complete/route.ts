@@ -4,7 +4,11 @@ import { getCurrentUserId, setAgentSession } from "@/lib/auth/session";
 import { onboardAgent } from "@/lib/onboard-agent";
 import { resolveAgentBySlug } from "@/lib/resolve-agent";
 import { getSetupDraft, saveSetupDraft } from "@/lib/setup/drafts";
-import type { AgentSetupDraftData } from "@/lib/types";
+import type { AgentSetupDraftData, ListingPayload } from "@/lib/types";
+
+function listingComplete(listing: Partial<ListingPayload>): listing is ListingPayload {
+  return Boolean(listing.address && listing.price && listing.beds != null && listing.baths != null);
+}
 
 function makePayload(data: Partial<AgentSetupDraftData>, userId: string) {
   const slug = data.slug || data.name?.toLowerCase().split(/\s+/)[0]?.replace(/[^a-z0-9-]/g, "");
@@ -12,12 +16,13 @@ function makePayload(data: Partial<AgentSetupDraftData>, userId: string) {
   if (!data.name || !data.market || !data.headshotUrl || !data.phone || !data.email) {
     throw new Error("Basics, phone, and email are required");
   }
-  if (!data.listings || data.listings.length < 3) {
-    throw new Error("Add at least 3 listings before publishing");
+  const completeListings = (data.listings ?? []).filter(listingComplete);
+  if (completeListings.length < 1) {
+    throw new Error("Add at least 1 complete listing before publishing");
   }
   const neighborhoods = data.neighborhoods?.length
     ? data.neighborhoods
-    : Array.from(new Set(data.listings.map((listing) => listing.neighborhood).filter(Boolean) as string[]));
+    : Array.from(new Set(completeListings.map((listing) => listing.neighborhood).filter(Boolean) as string[]));
   if (neighborhoods.length < 1) throw new Error("Add at least 1 neighborhood");
 
   return {
@@ -35,7 +40,7 @@ function makePayload(data: Partial<AgentSetupDraftData>, userId: string) {
     email: data.email,
     accentColor: data.accentColor,
     notificationPreferences: data.notificationPreferences,
-    listings: data.listings
+    listings: completeListings
   };
 }
 

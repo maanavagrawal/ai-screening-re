@@ -52,10 +52,15 @@ export function IntakeFlow({ agent }: { agent: Agent }) {
   const [question, setQuestion] = useState<QuestionId>("timeline");
   const [extracting, setExtracting] = useState(false);
   const [advancing, setAdvancing] = useState(false);
+  const [clientReady, setClientReady] = useState(false);
   const advancingRef = useRef(false);
   const [reviewExtraction, setReviewExtraction] = useState<FreeTextExtractionResult | null>(null);
   const [reviewFreeText, setReviewFreeText] = useState<string | null>(null);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    setClientReady(true);
+  }, []);
 
   useEffect(() => {
     if (!sessionId || !storageKey) return;
@@ -186,8 +191,12 @@ export function IntakeFlow({ agent }: { agent: Agent }) {
     }
   }
 
+  const intakeReady = clientReady && Boolean(sessionId);
+  const interactionDisabled = advancing || !intakeReady;
+
   return (
     <BuyerViewport>
+      <span className="sr-only" data-testid="intake-ready">{intakeReady ? "ready" : "loading"}</span>
       <div className="sticky top-0 z-10 bg-[#FAFAF7]/85 py-5 backdrop-blur">
         <ProgressDots active={Math.min((answers.answered_question_ids?.length ?? 0) % 6, 5)} />
       </div>
@@ -201,36 +210,36 @@ export function IntakeFlow({ agent }: { agent: Agent }) {
           {reviewExtraction ? (
             <ExtractionReview
               extraction={reviewExtraction}
-              disabled={advancing}
+              disabled={interactionDisabled}
               onAccept={(extraction) => void acceptExtraction(extraction)}
               onEdited={() => track("intake_extraction_edited")}
             />
           ) : question === "timeline" ? (
-            <TimelineQuestion disabled={advancing} onAnswer={(value) => void advance("timeline", value)} />
+            <TimelineQuestion disabled={interactionDisabled} onAnswer={(value) => void advance("timeline", value)} />
           ) : question === "free_text" ? (
-            <FreeTextQuestion loading={extracting} onSubmit={submitFreeText} />
+            <FreeTextQuestion loading={extracting || !intakeReady} onSubmit={submitFreeText} />
           ) : question === "current_situation" ? (
-            <CurrentSituationQuestion disabled={advancing} onAnswer={(value) => void advance("current_situation", value)} />
+            <CurrentSituationQuestion disabled={interactionDisabled} onAnswer={(value) => void advance("current_situation", value)} />
           ) : question === "financing" ? (
-            <FinancingQuestion disabled={advancing} onAnswer={(value) => void advance("financing", value)} />
+            <FinancingQuestion disabled={interactionDisabled} onAnswer={(value) => void advance("financing", value)} />
           ) : question === "preapproval_upload" ? (
             <PreapprovalUploadQuestion
               agentSlug={agent.slug}
               sessionId={sessionId}
-              disabled={advancing}
+              disabled={interactionDisabled}
               onAnswer={(value) => void advance("preapproval_upload", value)}
             />
           ) : question === "financing_help" ? (
-            <FinancingHelpQuestion disabled={advancing} onAnswer={(value) => void advance("financing_help", value)} />
+            <FinancingHelpQuestion disabled={interactionDisabled} onAnswer={(value) => void advance("financing_help", value)} />
           ) : question === "budget" ? (
-            <BudgetQuestion disabled={advancing} onAnswer={(value) => void advance("budget", value)} />
+            <BudgetQuestion disabled={interactionDisabled} onAnswer={(value) => void advance("budget", value)} />
           ) : question === "bedrooms" ? (
-            <SegmentedQuestion disabled={advancing} title="How many bedrooms?" options={["1", "2", "3", "4", "5_plus"]} onAnswer={(value) => void advance("bedrooms", value)} />
+            <SegmentedQuestion disabled={interactionDisabled} title="How many bedrooms?" options={["1", "2", "3", "4", "5_plus"]} onAnswer={(value) => void advance("bedrooms", value)} />
           ) : question === "bathrooms" ? (
-            <SegmentedQuestion disabled={advancing} title="How many bathrooms?" options={["1", "2", "3", "4_plus"]} onAnswer={(value) => void advance("bathrooms", value)} />
+            <SegmentedQuestion disabled={interactionDisabled} title="How many bathrooms?" options={["1", "2", "3", "4_plus"]} onAnswer={(value) => void advance("bathrooms", value)} />
           ) : question === "property_type" ? (
             <MultiSelectQuestion
-              disabled={advancing}
+              disabled={interactionDisabled}
               title="What kind of home?"
               options={[
                 { label: "House", value: "house" },
@@ -243,19 +252,19 @@ export function IntakeFlow({ agent }: { agent: Agent }) {
           ) : question === "neighborhoods" ? (
             <LocationQuestion
               agentSlug={agent.slug}
-              disabled={advancing}
+              disabled={interactionDisabled}
               initialOptions={agent.neighborhoods}
               initial={answers.selected_areas}
               onAnswer={(value) => void advance("neighborhoods", value)}
             />
           ) : question === "must_haves" ? (
-            <MultiSelectQuestion disabled={advancing} title="What would make it feel right?" options={mustHaveOptions} initial={answers.accepted_extraction?.must_haves} onAnswer={(value) => void advance("must_haves", value)} />
+            <MultiSelectQuestion disabled={interactionDisabled} title="What would make it feel right?" options={mustHaveOptions} initial={answers.accepted_extraction?.must_haves} onAnswer={(value) => void advance("must_haves", value)} />
           ) : question === "deal_breakers" ? (
-            <MultiSelectQuestion disabled={advancing} title="Anything you want to avoid?" options={dealBreakerOptions} onAnswer={(value) => void advance("deal_breakers", value)} />
+            <MultiSelectQuestion disabled={interactionDisabled} title="Anything you want to avoid?" options={dealBreakerOptions} onAnswer={(value) => void advance("deal_breakers", value)} />
           ) : question === "first_time_buyer" ? (
-            <SegmentedQuestion disabled={advancing} title="First time buying?" options={["yes", "no"]} onAnswer={(value) => void advance("first_time_buyer", value)} />
+            <SegmentedQuestion disabled={interactionDisabled} title="First time buying?" options={["yes", "no"]} onAnswer={(value) => void advance("first_time_buyer", value)} />
           ) : (
-            <AnythingElseQuestion disabled={advancing} onAnswer={(value) => void advance("anything_else", value)} />
+            <AnythingElseQuestion disabled={interactionDisabled} onAnswer={(value) => void advance("anything_else", value)} />
           )}
         </div>
       </AnimatePresence>

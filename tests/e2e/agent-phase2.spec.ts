@@ -40,11 +40,73 @@ test("root domain routes buyers, sellers, and agents by intent", async ({ page }
   await expect(page.getByText("We could not find that agent link.")).toBeVisible();
 });
 
+test("setup basics market field suggests cities while typing", async ({ page }, testInfo) => {
+  test.setTimeout(60_000);
+  const suffix = `${testInfo.project.name}-${Date.now()}`.toLowerCase().replace(/[^a-z0-9-]/g, "-");
+  const suggestionBodies: Array<{ query?: string; scope?: string }> = [];
+  const marketSaves: string[] = [];
+
+  await page.goto("/signup");
+  await page.getByLabel("Email").fill(`setup-market-${suffix}@example.com`);
+  await page.getByRole("button", { name: "Send magic link" }).click();
+  await page.getByRole("button", { name: "Continue" }).click();
+  await expect(page.getByText("In 10 minutes")).toBeVisible();
+
+  await page.route("**/api/setup/location-suggestions", async (route) => {
+    const body = route.request().postDataJSON() as { query?: string; scope?: string };
+    suggestionBodies.push(body);
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        suggestions: [
+          {
+            label: "San Ramon",
+            placeId: `market-place-${suffix}`,
+            source: "google_places",
+            type: "city",
+            parentLabel: "California, USA"
+          },
+          {
+            label: "San Jose",
+            placeId: `market-place-san-jose-${suffix}`,
+            source: "google_places",
+            type: "city",
+            parentLabel: "California, USA"
+          }
+        ]
+      })
+    });
+  });
+  await page.route("**/api/setup/save-draft", async (route) => {
+    const body = route.request().postDataJSON() as { data?: { market?: string } };
+    if (body.data?.market !== undefined) marketSaves.push(body.data.market);
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true })
+    });
+  });
+
+  await page.goto("/setup/basics", { waitUntil: "domcontentloaded" });
+  await expect(page.getByTestId("setup-ready")).toHaveText("ready", { timeout: 30_000 });
+  const marketInput = page.getByLabel("Market");
+  await marketInput.fill("San");
+  await expect(page.getByRole("option", { name: /San Ramon/ })).toBeVisible();
+  expect(suggestionBodies.at(-1)).toMatchObject({ query: "San", scope: "market" });
+  await page.getByRole("option", { name: /San Ramon/ }).click();
+
+  await expect(marketInput).toHaveValue("San Ramon, California, USA");
+  await expect.poll(() => marketSaves.at(-1)).toBe("San Ramon, California, USA");
+});
+
 test("setup listing entry starts with address lookup and reveals details", async ({ page }, testInfo) => {
   test.setTimeout(90_000);
   const suffix = `${testInfo.project.name}-${Date.now()}`.toLowerCase().replace(/[^a-z0-9-]/g, "-");
   const managedAddress = `120 ${suffix} Larch Road`;
   const suggestedAddress = `${managedAddress}, San Ramon, CA 94582`;
+  const replacementAddress = `88 ${suffix} Cedar Road`;
+  const replacementSuggestedAddress = `${replacementAddress}, Oakland, CA 94610`;
 
   await page.goto("/signup");
   await page.getByLabel("Email").fill(`setup-listing-${suffix}@example.com`);
@@ -53,22 +115,89 @@ test("setup listing entry starts with address lookup and reveals details", async
   await expect(page.getByText("In 10 minutes")).toBeVisible();
 
   await page.route("**/api/listing-address-suggestions", async (route) => {
+    const body = route.request().postDataJSON() as { query?: string };
+    const query = body.query?.toLowerCase() ?? "";
+    const useReplacement = query.includes("cedar") || query.startsWith("88 ");
     await route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
         suggestions: [
-          {
-            label: suggestedAddress,
-            placeId: `setup-place-${suffix}`,
-            secondaryLabel: "San Ramon, CA 94582",
-            source: "google_places"
-          }
+          useReplacement
+            ? {
+                label: replacementSuggestedAddress,
+                placeId: `replacement-place-${suffix}`,
+                secondaryLabel: "Oakland, CA 94610",
+                source: "google_places"
+              }
+            : {
+                label: suggestedAddress,
+                placeId: `setup-place-${suffix}`,
+                secondaryLabel: "San Ramon, CA 94582",
+                source: "google_places"
+              }
         ]
       })
     });
   });
+  const propertySearchBodies: Array<{ address?: string; placeId?: string }> = [];
   await page.route("**/api/listing-property-search", async (route) => {
+    const body = route.request().postDataJSON() as { address?: string; placeId?: string };
+    propertySearchBodies.push(body);
+    if (body.address?.includes("Fail")) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          result: {
+            attomId: null,
+            propertyDataSource: "manual",
+            propertyEnrichedAt: "2026-05-16T00:00:00.000Z",
+            propertyMatchConfidence: 0.3,
+            normalizedAddress: {
+              line1: "500 Fail Lane",
+              city: null,
+              state: null,
+              postalCode: null,
+              label: "500 Fail Lane"
+            },
+            propertyFacts: {},
+            message: "ATTOM could not read that address. Select a full street address from the dropdown with city, state, and ZIP, or fill the details manually below."
+          }
+        })
+      });
+      return;
+    }
+    if (body.address?.includes(replacementAddress)) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          result: {
+            attomId: `replacement-attom-${suffix}`,
+            propertyDataSource: "attom",
+            propertyEnrichedAt: "2026-05-16T00:00:00.000Z",
+            propertyMatchConfidence: 0.91,
+            normalizedAddress: {
+              line1: replacementAddress,
+              city: "Oakland",
+              state: "CA",
+              postalCode: "94610",
+              label: replacementSuggestedAddress
+            },
+            propertyFacts: {
+              beds: 2,
+              baths: 1,
+              sqft: 1110,
+              propertyType: "Condominium",
+              yearBuilt: 2008
+            },
+            message: "Property facts found."
+          }
+        })
+      });
+      return;
+    }
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -97,9 +226,57 @@ test("setup listing entry starts with address lookup and reveals details", async
       })
     });
   });
-  const listingSaveBodies: Array<{ data?: { listings?: unknown[] } }> = [];
+  const releaseSlowExtraction: { current: (() => void) | null } = { current: null };
+  let slowExtractionFinished = false;
+  await page.route("**/api/setup/extract-listing-details", async (route) => {
+    const body = route.request().postDataJSON() as { text?: string };
+    if (body.text?.includes("Slow Removed")) {
+      await new Promise<void>((resolve) => {
+        releaseSlowExtraction.current = resolve;
+      });
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          details: {
+            address: "700 Slow Removed Lane",
+            price: 825000,
+            beds: 2,
+            baths: 2,
+            sqft: 1200,
+            neighborhood: "Oakland",
+            property_type: "condo",
+            confidence: 0.9
+          }
+        })
+      });
+      slowExtractionFinished = true;
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        details: {
+          address: "500 Fail Lane",
+          price: 910000,
+          beds: 3,
+          baths: 2,
+          sqft: 1840,
+          neighborhood: "San Ramon",
+          property_type: "house",
+          features: ["yard"],
+          dealBreakerFlags: ["busy street"],
+          agent_note: "Good layout once you get past the street noise.",
+          confidence: 0.82
+        }
+      })
+    });
+  });
+  type SavedListing = { sourceText?: string; videoSource?: string | null; videoUrl?: string | null };
+  const listingSaveBodies: Array<{ data?: { listings?: SavedListing[] } }> = [];
   await page.route("**/api/setup/save-draft", async (route) => {
-    const body = route.request().postDataJSON() as { data?: { listings?: unknown[] } };
+    const body = route.request().postDataJSON() as { data?: { listings?: SavedListing[] } };
     if (Array.isArray(body?.data?.listings)) listingSaveBodies.push(body);
     await route.fulfill({
       status: 200,
@@ -110,7 +287,11 @@ test("setup listing entry starts with address lookup and reveals details", async
 
   await page.goto("/setup/listings", { waitUntil: "domcontentloaded" });
   await expect(page.getByTestId("setup-ready")).toHaveText("ready", { timeout: 30_000 });
-  await expect(page.getByRole("heading", { name: "Add 3 recent listings." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Add listings." })).toBeVisible();
+  await expect(page.getByText("Start with the first address.")).toBeVisible();
+  const continueButton = page.getByRole("button", { name: "Continue" });
+  await expect(continueButton).toBeDisabled();
+  await page.getByRole("button", { name: "Add listing" }).click();
   await expect(page.getByLabel("Listing 1 details")).not.toBeVisible();
 
   const propertyFacts = page.getByLabel("Listing 1 property facts");
@@ -118,7 +299,11 @@ test("setup listing entry starts with address lookup and reveals details", async
   await expect(page.getByRole("option", { name: new RegExp(managedAddress) })).toBeVisible();
   await page.getByRole("option", { name: new RegExp(managedAddress) }).click();
 
-  await expect(propertyFacts.getByText("Property facts found.")).toBeVisible({ timeout: 15_000 });
+  await expect(propertyFacts.getByText("Property facts added")).toBeVisible({ timeout: 15_000 });
+  expect(propertySearchBodies[0]).toMatchObject({
+    address: suggestedAddress,
+    placeId: `setup-place-${suffix}`
+  });
   const details = page.getByLabel("Listing 1 details");
   await expect(details).toBeVisible();
   await expect(details.getByLabel("Neighborhood")).toHaveValue("San Ramon");
@@ -126,18 +311,91 @@ test("setup listing entry starts with address lookup and reveals details", async
   await expect(details.getByLabel("Baths")).toHaveValue("3");
   await expect(details.getByLabel("Sqft")).toHaveValue("2650");
   await expect(details.getByLabel("Property type")).toHaveValue("house");
-  await expect(page.getByText("Optional media link").first()).toBeVisible();
-  await expect(page.getByText("Autofill from text").first()).toBeVisible();
+  await expect(page.getByText("Optional media link")).not.toBeVisible();
+  await expect(page.getByLabel("Listing 1 autofill from text")).not.toBeVisible();
+  await expect(continueButton).toBeDisabled();
+  await details.getByLabel("Price").fill("1200000");
+  await details.getByLabel("Video URL").fill("https://www.instagram.com/p/setup-video/");
+  await expect.poll(() => {
+    const latest = listingSaveBodies[listingSaveBodies.length - 1]?.data?.listings?.[0];
+    return latest?.videoSource;
+  }).toBe("instagram");
+  await expect(continueButton).toBeEnabled();
+
+  await propertyFacts.getByLabel("Address").fill(replacementAddress);
+  await expect(details.getByLabel("Price")).toHaveValue("");
+  await expect(details.getByLabel("Neighborhood")).toHaveValue("");
+  await expect(details.getByLabel("Beds")).toHaveValue("");
+  await expect(details.getByLabel("Baths")).toHaveValue("");
+  await expect(details.getByLabel("Sqft")).toHaveValue("");
+  await expect(details.getByLabel("Property type")).toHaveValue("");
+  await expect(continueButton).toBeDisabled();
+  await expect(page.getByRole("option", { name: new RegExp(replacementAddress) })).toBeVisible();
+  await page.getByRole("option", { name: new RegExp(replacementAddress) }).click();
+
+  await expect(propertyFacts.getByText("Property facts added")).toBeVisible({ timeout: 15_000 });
+  expect(propertySearchBodies.at(-1)).toMatchObject({
+    address: replacementSuggestedAddress,
+    placeId: `replacement-place-${suffix}`
+  });
+  await expect(details.getByLabel("Price")).toHaveValue("");
+  await expect(details.getByLabel("Neighborhood")).toHaveValue("Oakland");
+  await expect(details.getByLabel("Beds")).toHaveValue("2");
+  await expect(details.getByLabel("Baths")).toHaveValue("1");
+  await expect(details.getByLabel("Sqft")).toHaveValue("1110");
+  await expect(details.getByLabel("Property type")).toHaveValue("condo");
+  await expect(continueButton).toBeDisabled();
+  await details.getByLabel("Price").fill("1300000");
+  await expect(continueButton).toBeEnabled();
 
   await expect.poll(() => listingSaveBodies.length).toBeGreaterThanOrEqual(2);
   listingSaveBodies.length = 0;
+  await page.getByRole("button", { name: "Collapse listing 1" }).click();
+  await expect(details).not.toBeVisible();
+  await page.getByRole("button", { name: "Expand listing 1" }).click();
+  await expect(details).toBeVisible();
+
+  await page.getByRole("button", { name: "Add another listing" }).click();
   const secondPropertyFacts = page.getByLabel("Listing 2 property facts");
-  await secondPropertyFacts.getByLabel("Address").fill("88 Race Lane");
+  await secondPropertyFacts.getByLabel("Address").fill("500 Fail Lane");
   await secondPropertyFacts.getByRole("button", { name: "Lookup facts" }).click();
-  await expect(secondPropertyFacts.getByText("Property facts found.")).toBeVisible({ timeout: 15_000 });
+  await expect(secondPropertyFacts.getByText("Details needed")).toBeVisible({ timeout: 15_000 });
+  await expect(secondPropertyFacts.getByText("Enter the basics below, or paste remarks to autofill.")).toBeVisible();
+  await expect(secondPropertyFacts.getByText("ATTOM could not read that address")).not.toBeVisible();
+  await expect(secondPropertyFacts.getByText("No structured facts found yet.")).not.toBeVisible();
+  const secondAutofill = page.getByLabel("Listing 2 autofill from text");
+  await expect(secondAutofill).toBeVisible();
+  await secondAutofill.getByPlaceholder(/Paste remarks/).fill("500 Fail Lane, $910k, 3 bed, 2 bath, 1,840 sqft, San Ramon, yard, busy street.");
+  await secondAutofill.getByRole("button", { name: "Fill fields from text" }).click();
   const secondDetails = page.getByLabel("Listing 2 details");
+  await expect(secondDetails).toBeVisible();
+  await expect(secondDetails.getByLabel("Price")).toHaveValue("910000");
   await expect(secondDetails.getByLabel("Neighborhood")).toHaveValue("San Ramon");
-  expect(listingSaveBodies).toHaveLength(2);
+  await secondPropertyFacts.getByRole("button", { name: "Lookup facts" }).click();
+  await expect(secondPropertyFacts.getByText("Details needed")).toBeVisible({ timeout: 15_000 });
+  await expect(secondDetails.getByLabel("Price")).toHaveValue("910000");
+  await expect(secondDetails.getByLabel("Neighborhood")).toHaveValue("San Ramon");
+  await expect(secondDetails.getByLabel("Beds")).toHaveValue("3");
+  await expect(secondDetails.getByLabel("Baths")).toHaveValue("2");
+  await expect(secondDetails.getByLabel("Sqft")).toHaveValue("1840");
+  await page.getByRole("button", { name: "Remove listing 1" }).click();
+  await expect(page.getByLabel("Listing 2 property facts")).not.toBeVisible();
+  await expect(page.getByLabel("Listing 1 autofill from text").getByPlaceholder(/Paste remarks/)).toHaveValue("500 Fail Lane, $910k, 3 bed, 2 bath, 1,840 sqft, San Ramon, yard, busy street.");
+  await expect(page.getByLabel("Listing 1 details").getByLabel("Price")).toHaveValue("910000");
+  await expect(continueButton).toBeEnabled();
+  await page.getByRole("button", { name: "Add another listing" }).click();
+  const transientPropertyFacts = page.getByLabel("Listing 2 property facts");
+  await transientPropertyFacts.getByRole("button", { name: "Paste remarks instead" }).click();
+  const transientAutofill = page.getByLabel("Listing 2 autofill from text");
+  await transientAutofill.getByPlaceholder(/Paste remarks/).fill("Slow Removed Lane, $825k, 2 bed, 2 bath, 1,200 sqft, Oakland condo.");
+  await transientAutofill.getByRole("button", { name: "Fill fields from text" }).click();
+  await expect.poll(() => Boolean(releaseSlowExtraction.current)).toBe(true);
+  await page.getByRole("button", { name: "Remove listing 2" }).click();
+  releaseSlowExtraction.current?.();
+  await expect.poll(() => slowExtractionFinished).toBe(true);
+  await expect(page.getByLabel("Listing 2 property facts")).not.toBeVisible();
+  await expect.poll(() => listingSaveBodies.at(-1)?.data?.listings?.length).toBe(1);
+  expect(listingSaveBodies.length).toBeGreaterThanOrEqual(2);
 });
 
 test("setup neighborhoods autocomplete and continue after one area", async ({ page }, testInfo) => {
@@ -309,7 +567,33 @@ test("agent can publish setup, receive a lead, and work it from the dashboard", 
       })
     });
   });
+  let dashboardPropertyLookupCount = 0;
   await page.route("**/api/listing-property-search", async (route) => {
+    dashboardPropertyLookupCount += 1;
+    if (dashboardPropertyLookupCount > 1) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          result: {
+            attomId: null,
+            propertyDataSource: "manual",
+            propertyEnrichedAt: "2026-05-16T00:00:00.000Z",
+            propertyMatchConfidence: 0.3,
+            normalizedAddress: {
+              line1: managedAddress,
+              city: "Denver",
+              state: "CO",
+              postalCode: "80211",
+              label: suggestedManagedAddress
+            },
+            propertyFacts: {},
+            message: "No ATTOM match found. Fill the details manually below or use text autofill."
+          }
+        })
+      });
+      return;
+    }
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -353,6 +637,13 @@ test("agent can publish setup, receive a lead, and work it from the dashboard", 
   await expect(page.getByLabel("Property type")).toHaveValue("house");
   await page.getByLabel("Price").fill("765000");
   await page.getByLabel("Neighborhood").fill("Berkeley");
+  await page.getByRole("button", { name: "Lookup facts" }).click();
+  await expect(page.getByLabel("Price")).toHaveValue("765000");
+  await expect(page.getByLabel("Neighborhood")).toHaveValue("Berkeley");
+  await expect(page.getByLabel("Beds")).toHaveValue("4");
+  await expect(page.getByLabel("Baths")).toHaveValue("3");
+  await expect(page.getByLabel("Sqft")).toHaveValue("2100");
+  await expect(page.getByLabel("Property type")).toHaveValue("house");
   await page.getByLabel("Features").fill("yard, home office");
   await page.getByLabel("Agent note").fill("Fresh dashboard-managed listing.");
   await page.getByRole("button", { name: "Add listing" }).click();
@@ -364,7 +655,11 @@ test("agent can publish setup, receive a lead, and work it from the dashboard", 
   await editCard.getByLabel("Price").fill("795000");
   await editCard.getByLabel("Neighborhood").fill("Sunnyside");
   await editCard.getByLabel("Agent note").fill("Updated from the dashboard.");
+  const saveListingResponse = page.waitForResponse((response) =>
+    response.url().includes("/api/dashboard/listings/") && response.request().method() === "PATCH"
+  );
   await editCard.getByRole("button", { name: "Save listing" }).click();
+  expect((await saveListingResponse).status()).toBe(200);
   const updatedCard = page.locator("article").filter({ hasText: suggestedManagedAddress });
   await expect(updatedCard.getByText("$795k")).toBeVisible();
   await expect(updatedCard.getByText("Updated from the dashboard.")).toBeVisible();

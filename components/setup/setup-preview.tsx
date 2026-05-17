@@ -53,8 +53,5 @@ function PreviewListing({ listing }: { listing: Partial<ListingPayload> }) {
 }
 
 const placeholderListings: Array<Partial<ListingPayload>> = [
-  { address: "Your first listing", neighborhood: "Preview", beds: 3, baths: 2 },
-  { address: "Your second listing", neighborhood: "Preview", beds: 2, baths: 2 },
-  { address: "Your third listing", neighborhood: "Preview", beds: 4, baths: 3 }
+  { address: "Your first listing", neighborhood: "Preview", beds: 3, baths: 2 }
 ];
-
