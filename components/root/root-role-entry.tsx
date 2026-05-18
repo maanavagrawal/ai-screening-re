@@ -140,7 +140,7 @@ export function RootRoleEntry({
 
             <section aria-label="Memoir private link preview" className="min-w-0 max-w-full">
               <div className="relative min-w-0 rounded-[2rem] border border-white/20 bg-[#F7F0E4]/96 p-3 text-[#131816] shadow-[0_34px_110px_rgba(0,0,0,0.48)] backdrop-blur-xl">
-                <div className="absolute -left-6 top-10 hidden rounded-2xl border border-white/20 bg-[#17231E]/90 px-4 py-3 text-sm font-semibold text-white shadow-[0_18px_70px_rgba(0,0,0,0.34)] backdrop-blur xl:block">
+                <div className="pointer-events-none absolute -left-28 -top-5 z-20 hidden rounded-2xl border border-white/20 bg-[#17231E]/90 px-4 py-3 text-sm font-semibold text-white shadow-[0_18px_70px_rgba(0,0,0,0.34)] backdrop-blur xl:block">
                   <span className="block text-xs uppercase tracking-wide text-[#91C8BA]">Lead quality</span>
                   <span className="mt-1 block font-serif text-3xl leading-none">High</span>
                 </div>
