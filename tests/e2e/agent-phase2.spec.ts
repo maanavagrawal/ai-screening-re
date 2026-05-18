@@ -2,42 +2,22 @@ import { expect, test } from "@playwright/test";
 
 const videoUrl = "https://videos.pexels.com/video-files/7578545/7578545-uhd_1440_2732_25fps.mp4";
 
-test("root domain routes buyers, sellers, and agents by intent", async ({ page }) => {
+test("root domain prioritizes agent signup", async ({ page }) => {
   test.setTimeout(60_000);
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await expect(page.getByTestId("root-ready")).toHaveText("ready");
   await expect(page).not.toHaveURL(/\/maya$/);
-  await expect(page.getByRole("heading", { name: "What are you here to do?" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Private agent links for serious real estate leads." })).toBeVisible();
+  await expect(page.getByText("Agent client links")).toBeVisible();
 
-  await page.getByRole("button", { name: /Buy a home/ }).click();
-  await page.getByLabel("Agent link or code").fill("maya");
-  await page.getByRole("button", { name: "Check link" }).click();
-  await Promise.all([
-    page.waitForURL(/\/maya$/),
-    page.getByRole("link", { name: "Continue to Maya Chen" }).click()
-  ]);
-
-  await page.goto("/", { waitUntil: "domcontentloaded" });
-  await expect(page.getByTestId("root-ready")).toHaveText("ready");
-  await page.getByRole("button", { name: /Sell a home/ }).click();
-  await page.getByLabel("Agent link or code").fill("/maya");
-  await page.getByRole("button", { name: "Check link" }).click();
-  await Promise.all([
-    page.waitForURL(/\/maya\/seller$/),
-    page.getByRole("link", { name: "Continue to Maya Chen" }).click()
-  ]);
-
-  await page.goto("/", { waitUntil: "domcontentloaded" });
-  await expect(page.getByTestId("root-ready")).toHaveText("ready");
-  await page.getByRole("button", { name: /I am an agent/ }).click();
+  await page.getByRole("link", { name: "Get your private link" }).click();
+  await expect(page).toHaveURL(/\/signup$/);
   await expect(page.getByRole("heading", { name: "Sign in or create your agent link" })).toBeVisible();
 
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await expect(page.getByTestId("root-ready")).toHaveText("ready");
-  await page.getByRole("button", { name: /Buy a home/ }).click();
-  await page.getByLabel("Agent link or code").fill("/dashboard");
-  await page.getByRole("button", { name: "Check link" }).click();
-  await expect(page.getByText("We could not find that agent link.")).toBeVisible();
+  await page.getByRole("link", { name: "Sign in or create link" }).click();
+  await expect(page).toHaveURL(/\/signup$/);
 });
 
 test("setup basics market field suggests cities while typing", async ({ page }, testInfo) => {
@@ -48,7 +28,7 @@ test("setup basics market field suggests cities while typing", async ({ page }, 
 
   await page.goto("/signup");
   await page.getByLabel("Email").fill(`setup-market-${suffix}@example.com`);
-  await page.getByRole("button", { name: "Send magic link" }).click();
+  await page.getByRole("button", { name: "Send secure sign-in link" }).click();
   await page.getByRole("button", { name: "Continue" }).click();
   await expect(page.getByText("In 10 minutes")).toBeVisible();
 
@@ -110,7 +90,7 @@ test("setup listing entry starts with address lookup and reveals details", async
 
   await page.goto("/signup");
   await page.getByLabel("Email").fill(`setup-listing-${suffix}@example.com`);
-  await page.getByRole("button", { name: "Send magic link" }).click();
+  await page.getByRole("button", { name: "Send secure sign-in link" }).click();
   await page.getByRole("button", { name: "Continue" }).click();
   await expect(page.getByText("In 10 minutes")).toBeVisible();
 
@@ -404,7 +384,7 @@ test("setup neighborhoods autocomplete and continue after one area", async ({ pa
 
   await page.goto("/signup");
   await page.getByLabel("Email").fill(`setup-areas-${suffix}@example.com`);
-  await page.getByRole("button", { name: "Send magic link" }).click();
+  await page.getByRole("button", { name: "Send secure sign-in link" }).click();
   await page.getByRole("button", { name: "Continue" }).click();
   await expect(page.getByText("In 10 minutes")).toBeVisible();
 
@@ -458,7 +438,7 @@ test("agent can publish setup, receive a lead, and work it from the dashboard", 
 
   await page.goto("/signup");
   await page.getByLabel("Email").fill(email);
-  const sendMagicLink = page.getByRole("button", { name: "Send magic link" });
+  const sendMagicLink = page.getByRole("button", { name: "Send secure sign-in link" });
   await expect(sendMagicLink).toBeEnabled();
   await sendMagicLink.click();
   await page.getByRole("button", { name: "Continue" }).click();

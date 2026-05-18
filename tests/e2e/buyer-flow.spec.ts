@@ -175,7 +175,7 @@ test("Maya and David landing pages are isolated", async ({ page }) => {
 test("buyer can complete intake, see matches, and request a showing", async ({ page }) => {
   test.setTimeout(180_000);
   await page.goto("/maya", { waitUntil: "domcontentloaded" });
-  await page.getByRole("link", { name: /Find your next home/ }).click();
+  await page.getByRole("link", { name: /Start buyer brief/ }).click();
   await completeIntake(page);
 
   await page.getByLabel("First name").fill("Sarah");

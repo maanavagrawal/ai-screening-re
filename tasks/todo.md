@@ -2,6 +2,53 @@
 
 ## Priority 1
 
+- [x] Clarify returning-agent signup copy
+  - Goal:
+    - [x] Make `/signup` explain that new and returning agents use the same email magic-link flow.
+  - Plan:
+    - [x] Update the signup form headline/support copy so returning agents know to enter the same email.
+    - [x] Make the submit button read like sign-in access, not a technical magic-link action.
+    - [x] Verify typecheck.
+  - Review:
+    - `/signup` now tells returning agents to enter the same email and explains they will be routed to the dashboard. New agents are told to use their work email to start private-link setup.
+    - The button now says `Send secure sign-in link`, and the helper note says no password is needed because returning agents are recognized by email.
+    - The sent state now reinforces that returning agents go to dashboard while new agents continue setup.
+    - Verification: `npm run typecheck` passed; after clearing a stale `.next` dev cache and restarting the local server, the in-app browser confirmed the updated copy on `/signup`.
+
+- [x] Re-center root landing on agent signup
+  - Goal:
+    - [x] The root page should be primarily for agents to sign in/create their private link.
+    - [x] Buyers normally enter through the agent-shared slug link, so a generic paste-your-agent-link page is redundant.
+  - Plan:
+    - [x] Route all root agent CTAs to the dedicated signup page.
+    - [x] Remove the generic buyer/seller link-paste entry page from the current landing flow.
+    - [x] Keep direct agent slug pages such as `/maya` as the buyer/seller entry path.
+    - [x] Record the future buyer/seller public path as ZIP/home search, not link paste.
+    - [x] Update focused routing tests and run verification.
+  - Review:
+    - Root no longer exposes a redundant buyer/seller link-paste form. `Get your private link`, `Agent access`, and the preview-card agent CTA all go to `/signup`.
+    - The secondary hero CTA now scrolls to the how-it-works section instead of opening a link-entry form.
+    - Removed the temporary `/agent-link` page and its component. Direct agent slug links remain the buyer/seller entry path.
+    - Captured the future design constraint: if the public buyer/seller path exists later, it should start from ZIP/location home discovery rather than asking users to paste an agent link.
+    - Verification: `npm run typecheck`, `npm run lint`, and `git diff --check` passed; warm Playwright smoke confirmed both root signup CTAs navigate to `/signup`; regenerated/cleaned stale Next route types after removing `/agent-link`.
+    - Review follow-up: `/review` found stale setup e2e selectors after the signup button copy changed. Updated the selectors to `Send secure sign-in link`, then verified `./scripts/test.sh`, `./scripts/e2e.sh`, `npm run build`, and `git diff --check` all pass.
+
+- [x] Upgrade root landing to feel premium and agent-owned
+  - Product/design read:
+    - [x] Memoir should feel like an invite-only private client room, not a generic intake form or static role picker.
+    - [x] Reference direction: modern vertical SaaS pages lead with a vivid product surface, a sharp outcome, and motion that makes the software feel alive.
+  - Plan:
+    - [x] Fix the broken root component JSX from the prior partial landing edit.
+    - [x] Rebuild the root hero around a real real-estate visual, high-contrast premium palette, live private-link product preview, and role entry.
+    - [x] Add restrained motion and responsive behavior with reduced-motion fallbacks.
+    - [x] Keep buyer/seller/agent routing and existing magic-link behavior intact.
+    - [x] Verify typecheck, diff hygiene, and desktop/mobile browser rendering.
+  - Review:
+    - Root landing now opens with a cinematic real-estate backdrop, stronger private-link positioning, a live `memoir.link/maya` product preview, premium CTA styling, and role entry that still routes buyers, sellers, and agents through the existing flows.
+    - Design review finding fixed during QA: the first implementation animated the whole preview stack, including buttons, which made click targets unstable. Motion now lives on non-interactive preview elements and the marquee only.
+    - Mobile overflow was fixed with shrink-safe containers and wrapping on the long private-link text, so the headline and CTAs no longer crop at phone width.
+    - Verification: online reference pass completed; in-app browser opened `http://127.0.0.1:3001/`; desktop/mobile Playwright screenshots passed; root buyer/seller/agent routing smoke passed; `npm run typecheck`, `npm run lint`, and `git diff --check` passed.
+
 - [x] Split buyer property-type intake into single-family and multifamily paths
   - Goal:
     - [x] Replace the current broad `What kind of home?` question with an upfront `Single-family`, `Multifamily`, or `Both` choice.
@@ -20,6 +67,21 @@
     - Intake answers now preserve `property_category`, path-specific detail arrays, and a combined `property_type` list so existing summaries and downstream lead preferences still have one combined property preference.
     - The deterministic fallback router now guards against legacy `property_type` repeats and lets a pending both-path property detail finish before the hard cap ends the intake.
     - Verification: `npm run typecheck` passed; focused `npm run test -- tests/unit/ai-helpers.test.ts` passed with 10 tests; `./scripts/test.sh` passed with lint, typecheck, and 124 unit tests; focused `DATABASE_URL= npm run e2e -- tests/e2e/buyer-flow.spec.ts --grep "property category"` passed on desktop/mobile; `npm run build` passed; `git diff --check` passed. Full `DATABASE_URL= ./scripts/e2e.sh` was attempted twice but the local Next dev server corrupted `.next` manifests mid-run, matching the repo's documented stale-cache failure mode, so focused e2e plus production build are the reliable browser/build proof for this change.
+
+- [x] Clarify root and agent landing pages
+  - Product purpose:
+    - [x] Memoir is an agent-owned buyer/seller intake link, not a public listings portal: agents share one link, buyers/sellers answer guided questions, and the agent receives a qualified lead with context.
+  - Plan:
+    - [x] Rewrite root landing hierarchy so visitors understand the product before choosing a path.
+    - [x] Make buyer/seller/agent role choices action-oriented and easy to scan.
+    - [x] Make the agent-branded buyer landing page explain what happens after the CTA.
+    - [x] Keep the existing buyer, seller, and agent routing behavior intact.
+    - [x] Verify desktop/mobile landing flows with tests and visual checks.
+  - Review:
+    - Product purpose: Memoir is an agent-owned intake link, not a public listings portal. Agents share one private URL; buyers/sellers answer a guided intake; agents receive qualified context and matched-home follow-up material.
+    - Root landing now explains that purpose before the path chooser, then presents action-oriented buyer, seller, and agent choices. The process explanation is secondary and uses a compact rail instead of a generic feature grid.
+    - Agent landing now opens with a clear buyer-invite promise, an inline `Start buyer brief` CTA, a concise `What happens next` panel, and unblurred/redacted listing previews. The fixed mobile footer CTA was removed after visual review because it overlapped content.
+    - Verification: `npm run typecheck` passed; focused root e2e passed on desktop/mobile; focused buyer landing/intake e2e passed on desktop/mobile after a fresh port rerun; `./scripts/test.sh` passed with lint, typecheck, and 122 unit tests; `npm run build` passed after network escalation for Google fonts; `git diff --check` passed; Playwright screenshots verified root and agent landing pages on desktop/mobile. Full `./scripts/e2e.sh` remains noisy in this local Next dev setup due generated `.next` cache/server churn, so focused e2e evidence is the reliable browser proof for this change.
 
 - [x] Fix setup listing review findings for async card saves and lookup fallback
   - Root cause hypothesis:

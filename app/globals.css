@@ -64,3 +64,37 @@ video {
   outline: 3px solid var(--agent-accent-soft);
   outline-offset: 2px;
 }
+
+@keyframes memoir-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+@keyframes memoir-marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.memoir-float {
+  animation: memoir-float 7s ease-in-out infinite;
+}
+
+.memoir-marquee {
+  animation: memoir-marquee 18s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .memoir-float,
+  .memoir-marquee {
+    animation: none;
+  }
+}

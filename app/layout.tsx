@@ -15,8 +15,8 @@ const fraunces = Fraunces({
 });
 
 export const metadata: Metadata = {
-  title: "Buyer Link",
-  description: "Create a personal real estate buyer link and qualify inbound leads."
+  title: "Memoir | Private Real Estate Intake Links",
+  description: "Create an agent-owned buyer and seller intake link that turns inbound interest into useful lead context."
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

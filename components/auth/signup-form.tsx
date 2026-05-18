@@ -47,7 +47,7 @@ export function SignupForm({
         <div>
           <Heading className="font-serif text-5xl leading-none">Check your email</Heading>
           <p className="mt-4 text-warm-muted">
-            Your sign-in link is on the way. We will open your dashboard or resume setup from where you left off.
+            Your secure sign-in link is on the way. Returning agents go to their dashboard; new agents continue into private-link setup.
           </p>
         </div>
         {continueHref ? (
@@ -67,7 +67,7 @@ export function SignupForm({
         <p className="mb-3 text-sm font-semibold text-[var(--agent-accent)]">Agent access</p>
         <Heading className="font-serif text-5xl leading-none">Sign in or create your agent link</Heading>
         <p className="mt-4 text-warm-muted">
-          Magic link only. No passwords, no CRM migration, no setup maze.
+          Returning agent? Enter the same email and we will take you to your dashboard. New here? Use your work email to start your private link setup.
         </p>
       </div>
       <label className="block">
@@ -83,9 +83,12 @@ export function SignupForm({
       </label>
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
       <Button className="w-full gap-2" disabled={loading || !email}>
-        {loading ? "Sending..." : "Send magic link"}
+        {loading ? "Sending..." : "Send secure sign-in link"}
         <ArrowRight size={18} />
       </Button>
+      <p className="text-center text-sm leading-6 text-warm-muted">
+        No password needed. We recognize returning agents by email.
+      </p>
     </form>
   );
 }
