@@ -3,9 +3,42 @@ import { cookies } from "next/headers";
 import { getListingsForAgent } from "@/lib/listings";
 import { findLeadById, getMatchReasonMap } from "@/lib/leads";
 import { redactKnownListingAddresses, redactListingForBuyer } from "@/lib/listing-privacy";
-import { rankListings } from "@/lib/match-score";
+import { matchScore, rankListings } from "@/lib/match-score";
 import { resolveAgent } from "@/lib/resolve-agent";
 import { LEAD_COOKIE, SESSION_COOKIE } from "@/lib/session";
+import type { Agent, Listing } from "@/lib/types";
+
+type BuyerMatch = {
+  listing: Listing;
+  score: number;
+  match_reason: string;
+};
+
+function fallbackReason(agent: Agent, listing: Listing, mode: "recommended" | "all") {
+  const location = listing.neighborhood ?? agent.market;
+  if (mode === "recommended") {
+    return `${location} fits your search with ${listing.beds} beds and ${listing.baths} baths.`;
+  }
+  return `${location} is one of ${agent.name}'s current listings. Browse it alongside the rest of their available homes.`;
+}
+
+function toBuyerMatch(input: {
+  agent: Agent;
+  listing: Listing;
+  score: number;
+  listings: Listing[];
+  reasonMap: Map<string, string>;
+  mode: "recommended" | "all";
+}): BuyerMatch {
+  return {
+    listing: redactListingForBuyer(input.listing),
+    score: input.score,
+    match_reason: redactKnownListingAddresses(
+      input.reasonMap.get(input.listing.id) ?? fallbackReason(input.agent, input.listing, input.mode),
+      input.listings
+    )
+  };
+}
 
 export async function GET(
   request: Request,
@@ -29,17 +62,26 @@ export async function GET(
   const listings = await getListingsForAgent(agent.id);
   const reasonMap = await getMatchReasonMap(lead.id);
   const ranked = rankListings(listings, lead.preferences);
+  const recommendedMatches = ranked.map(({ listing, score }) =>
+    toBuyerMatch({ agent, listing, score, listings, reasonMap, mode: "recommended" })
+  );
+  const allMatches = listings.map((listing) =>
+    toBuyerMatch({
+      agent,
+      listing,
+      score: matchScore(listing, lead.preferences),
+      listings,
+      reasonMap,
+      mode: "all"
+    })
+  );
+  const defaultTab = recommendedMatches.length > 0 ? "recommended" : "all";
 
   return NextResponse.json({
     lead,
-    matches: ranked.map(({ listing, score }) => ({
-      listing: redactListingForBuyer(listing),
-      score,
-      match_reason: redactKnownListingAddresses(
-        reasonMap.get(listing.id) ??
-          `${listing.neighborhood ?? agent.market} fits your search with ${listing.beds} beds and ${listing.baths} baths.`,
-        listings
-      )
-    }))
+    matches: defaultTab === "recommended" ? recommendedMatches : allMatches,
+    recommendedMatches,
+    allMatches,
+    defaultTab
   });
 }

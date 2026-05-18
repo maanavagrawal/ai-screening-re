@@ -193,6 +193,15 @@ test("buyer can complete intake, see matches, and request a showing", async ({ p
   }
   await expect(page).toHaveURL(/\/maya\/matches/, { timeout: 15_000 });
   await expect(page.getByRole("heading", { name: "Your matches", exact: true })).toBeVisible({ timeout: 15_000 });
+  const recommendedTab = page.getByRole("tab", { name: /Recommended/ });
+  const allTab = page.getByRole("tab", { name: /All/ });
+  await expect(recommendedTab).toBeVisible();
+  await expect(allTab).toBeVisible();
+  await expect(recommendedTab).toHaveAttribute("aria-selected", "true");
+  await allTab.click();
+  await expect(allTab).toHaveAttribute("aria-selected", "true");
+  await expect(page.locator("#matches-all")).toBeVisible();
+  await recommendedTab.click();
   await expect(page.getByText("Exact address shared after showing request").first()).toBeVisible();
   await expectExactAddressesHidden(page, MAYA_EXACT_ADDRESSES);
   await expectNoVisibleAiBranding(page);

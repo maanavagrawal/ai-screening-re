@@ -2,6 +2,24 @@
 
 ## Priority 1
 
+- [x] Add buyer matches tabs for recommended and all listings
+  - Goal:
+    - [x] Buyer results should have `Recommended` and `All` tabs.
+    - [x] `All` should show every listing the agent has published.
+    - [x] `Recommended` should show the listings that best match buyer preferences.
+    - [x] If no listings meet the recommendation threshold, default the buyer to `All`; if recommendations exist, default to `Recommended`.
+  - Plan:
+    - [x] Extend `/api/matches/[leadId]` to return recommended matches, all redacted listings with scores, and default tab metadata.
+    - [x] Update `MatchesFeed` to render segmented tabs, counts, fallback copy, and dismiss behavior across both tabs.
+    - [x] Add unit coverage for the API fallback/default-tab behavior.
+    - [x] Update buyer e2e expectations for the new tabs.
+    - [x] Run focused and project verification.
+  - Review:
+    - `/api/matches/[leadId]` now returns `recommendedMatches`, `allMatches`, and `defaultTab` while keeping `matches` backward-compatible. `Recommended` is score-thresholded; `All` includes every buyer-redacted listing for the agent.
+    - Buyer matches now render segmented `Recommended` and `All` tabs with counts. If there are recommendations, buyers land on `Recommended`; if not, they land on `All` with fallback copy explaining that all agent listings are being shown.
+    - Dismissing a listing removes it from both tabs for that buyer session.
+    - Verification: focused matches route/match-score unit tests passed; focused buyer flow e2e passed on desktop/mobile; `./scripts/test.sh` passed with lint, typecheck, and 126 unit tests; `./scripts/e2e.sh` passed with 20 desktop/mobile tests; `npm run build` passed; `git diff --check` passed.
+
 - [x] Clarify returning-agent signup copy
   - Goal:
     - [x] Make `/signup` explain that new and returning agents use the same email magic-link flow.
